@@ -70,22 +70,7 @@ if config_env() == :prod do
     # pool_count: 4,
     sockets_options: maybe_ipv6
 
-  # Konfigurasi UserRepo (MySQL) dari User Service
-  mysql_host = System.get_env("DB_MYSQL_HOST") || raise "DB_MYSQL_HOST missing"
-  mysql_port = String.to_integer(System.get_env("DB_MYSQL_PORT") || "25060")
-  mysql_user = System.get_env("DB_MYSQL_USER") || raise "DB_MYSQL_USER missing"
-  mysql_pass = System.get_env("DB_MYSQL_PASSWORD") || raise "DB_MYSQL_PASSWORD missing"
-  mysql_name = System.get_env("DB_MYSQL_NAME") || "nukar_api"
-
-  config :revoluchat, Revoluchat.UserRepo,
-    username: mysql_user,
-    password: mysql_pass,
-    hostname: mysql_host,
-    port: mysql_port,
-    database: mysql_name,
-    pool_size: String.to_integer(System.get_env("MYSQL_POOL_SIZE") || "5"),
-    # DigitalOcean managed DB butuh SSL biasanya (atau setidaknya supported)
-    ssl: false
+  # User Service Integration via gRPC handled by Revoluchat.Grpc.UserClient
 
   # Config RSA Public Key Path
   rsa_public_key_path = System.get_env("RSA_PUBLIC_KEY_PATH")

@@ -27,11 +27,9 @@ defmodule Revoluchat.V1.ConversationService.Service do
 
   use GRPC.Service, name: "revoluchat.v1.ConversationService", protoc_gen_elixir_version: "0.16.0"
 
-  rpc(
-    :CreateConversation,
-    Revoluchat.V1.CreateConversationRequest,
-    Revoluchat.V1.CreateConversationResponse
-  )
+  rpc :CreateConversation,
+      Revoluchat.V1.CreateConversationRequest,
+      Revoluchat.V1.CreateConversationResponse
 end
 
 defmodule Revoluchat.V1.ConversationService.Stub do

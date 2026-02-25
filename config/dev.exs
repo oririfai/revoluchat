@@ -10,18 +10,6 @@ config :revoluchat, Revoluchat.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
-# MySQL — User service DB (DigitalOcean)
-config :revoluchat, Revoluchat.UserRepo,
-  username: System.get_env("DB_MYSQL_USER", "doadmin"),
-  password: System.get_env("DB_MYSQL_PASSWORD", ""),
-  hostname: System.get_env("DB_MYSQL_HOST", "localhost"),
-  port: String.to_integer(System.get_env("DB_MYSQL_PORT", "3306")),
-  database: System.get_env("DB_MYSQL_NAME", "nukar_api"),
-  ssl: [verify: :verify_none],
-  pool_size: 5,
-  show_sensitive_data_on_connection_error: true,
-  priv: "priv/user_repo"
-
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

@@ -13,8 +13,6 @@ defmodule Revoluchat.Application do
       {TelemetryMetricsPrometheus,
        [metrics: Revoluchat.Telemetry.metrics() ++ RevoluchatWeb.Telemetry.metrics()]},
       Revoluchat.Repo,
-      # MySQL — User service DB (read-only, untuk verify user exist)
-      Revoluchat.UserRepo,
       {DNSCluster, query: Application.get_env(:revoluchat, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Revoluchat.PubSub},
       # Presence (untuk user online status)

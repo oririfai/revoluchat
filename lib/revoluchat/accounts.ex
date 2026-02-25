@@ -2,11 +2,11 @@ defmodule Revoluchat.Accounts do
   @moduledoc """
   Context untuk autentikasi — microservice mode.
   Revoluchat TIDAK menerbitkan token. Hanya verifikasi JWT dari user service
-  dan cek user exist di MySQL user service DB.
+  dan cek user exist via gRPC call ke User Service.
   """
 
   alias Revoluchat.Accounts.{User, Token}
-  alias Revoluchat.UserRepo
+  alias Revoluchat.Grpc.UserClient
 
   # ─── Token Verification ───────────────────────────────────────────────────────
 
@@ -21,29 +21,26 @@ defmodule Revoluchat.Accounts do
   # ─── User Verification ────────────────────────────────────────────────────────
 
   @doc """
-  Cek apakah user terdaftar dan aktif di user service DB (MySQL).
+  Cek apakah user terdaftar dan aktif via gRPC ke User Service.
   Returns {:ok, user} atau {:error, :user_not_found}.
   """
   def verify_user_exists(user_id) do
-    case UserRepo.get(User, user_id) do
-      nil ->
-        {:error, :user_not_found}
-
-      %{deleted_at: deleted_at} when not is_nil(deleted_at) ->
-        {:error, :user_not_found}
-
-      user ->
+    case UserClient.get_user(user_id) do
+      {:ok, user} ->
         {:ok, user}
+
+      {:error, :not_found} ->
+        {:error, :user_not_found}
+
+      {:error, _reason} ->
+        {:error, :user_not_found}
     end
   end
 
   @doc """
-  Ambil data user dari MySQL user service DB.
+  Ambil data user via gRPC dari User Service.
   """
   def get_user(user_id) do
-    case UserRepo.get(User, user_id) do
-      nil -> {:error, :not_found}
-      user -> {:ok, user}
-    end
+    UserClient.get_user(user_id)
   end
 end

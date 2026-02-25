@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "github.com/revolu/user-service/proto/userv1";
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+}
+
+message GetUserRequest {
+  uint64 id = 1;
+}
+
+message GetUserResponse {
+  uint64 id = 1;
+  string uuid = 2;
+  string name = 3;
+  string phone = 4;
+  string status = 5;
+  bool is_kyc = 6;
+  string avatar_url = 7;
+}

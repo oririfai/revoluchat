@@ -1,7 +1,7 @@
 defmodule RevoluchatWeb.Plugs.AuthPlug do
   @moduledoc """
-  Verifikasi JWT RS256 dari user service dan cek user exist di MySQL.
-  Flow: Bearer token → verify RS256 → extract user_id (int) → cek MySQL → assign conn.
+  Verifikasi JWT RS256 dari user service dan cek user context.
+  Flow: Bearer token → verify RS256 → extract user_id (string/int) → assign conn.
   """
 
   import Plug.Conn

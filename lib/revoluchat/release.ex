@@ -7,7 +7,8 @@ defmodule Revoluchat.Release do
   def migrate do
     load_app()
 
-    # Hanya migrate Repo utama (Postgres), jangan sentuh UserRepo (MySQL remote)
+    # Migrasi Repo utama (Postgres)
+
     repo = Revoluchat.Repo
 
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))

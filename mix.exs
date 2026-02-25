@@ -60,9 +60,6 @@ defmodule Revoluchat.MixProject do
       # HTTP Client for Webhooks
       {:req, "~> 0.4"},
 
-      # MySQL adapter — untuk koneksi ke DB user service
-      {:myxql, "~> 0.7"},
-
       # Background jobs
       {:oban, "~> 2.19"},
 

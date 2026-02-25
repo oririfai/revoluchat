@@ -8,7 +8,7 @@
 import Config
 
 config :revoluchat,
-  ecto_repos: [Revoluchat.Repo, Revoluchat.UserRepo],
+  ecto_repos: [Revoluchat.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configures the endpoint
