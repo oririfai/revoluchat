@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Pastikan protoc-gen-elixir ada di PATH
+export PATH=$PATH:$HOME/.mix/escripts
+
+# Buat direktori output jika belum ada
+mkdir -p lib/revoluchat/grpc
+
+# Generate code
+protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/chat.proto
+
+echo "✅ Proto code generated successfully in lib/revoluchat/grpc"

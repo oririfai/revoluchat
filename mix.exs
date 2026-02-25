@@ -1,0 +1,112 @@
+defmodule Revoluchat.MixProject do
+  use Mix.Project
+
+  def project do
+    [
+      app: :revoluchat,
+      version: "0.1.0",
+      elixir: "~> 1.15",
+      elixirc_paths: elixirc_paths(Mix.env()),
+      start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
+      deps: deps(),
+      listeners: [Phoenix.CodeReloader]
+    ]
+  end
+
+  # Configuration for the OTP application.
+  #
+  # Type `mix help compile.app` for more information.
+  def application do
+    [
+      mod: {Revoluchat.Application, []},
+      extra_applications: [:logger, :runtime_tools]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [precommit: :test]
+    ]
+  end
+
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  # Specifies your project dependencies.
+  #
+  # Type `mix help deps` for examples and options.
+  defp deps do
+    [
+      # Phoenix core
+      {:phoenix, "~> 1.8.1"},
+      {:phoenix_ecto, "~> 4.5"},
+      {:ecto_sql, "~> 3.13"},
+      {:postgrex, ">= 0.0.0"},
+      {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
+      {:telemetry_metrics_prometheus, "~> 1.1"},
+      {:gettext, "~> 0.26"},
+      {:jason, "~> 1.2"},
+      {:dns_cluster, "~> 0.2.0"},
+      {:bandit, "~> 1.5"},
+
+      # Auth — JWT RS256 verification only (token diterbitkan user service)
+      {:joken, "~> 2.6"},
+      {:joken_jwks, "~> 1.6"},
+
+      # HTTP Client for Webhooks
+      {:req, "~> 0.4"},
+
+      # MySQL adapter — untuk koneksi ke DB user service
+      {:myxql, "~> 0.7"},
+
+      # Background jobs
+      {:oban, "~> 2.19"},
+
+      # Object storage (S3 / MinIO)
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:hackney, "~> 1.20"},
+      {:sweet_xml, "~> 0.7"},
+
+      # Rate limiting
+      {:hammer, "~> 6.2"},
+
+      # Clustering (production)
+      {:libcluster, "~> 3.3"},
+
+      # CORS
+      {:cors_plug, "~> 3.0"},
+
+      # gRPC support
+      {:grpc, "~> 0.9"},
+      # Proto compiler
+      {:protobuf, "~> 0.13"},
+
+      # Dev/Test only
+      {:ex_machina, "~> 2.8", only: [:test]},
+      {:mox, "~> 1.1", only: [:test]},
+      {:faker, "~> 0.18", only: [:test]},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  # Aliases are shortcuts or tasks specific to the current project.
+  # For example, to install project dependencies and perform other setup tasks, run:
+  #
+  #     $ mix setup
+  #
+  # See the documentation for `Mix` for more info on aliases.
+  defp aliases do
+    [
+      setup: ["deps.get", "ecto.setup"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"]
+    ]
+  end
+end

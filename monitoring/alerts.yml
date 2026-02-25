@@ -1,0 +1,26 @@
+groups:
+  - name: revoluchat
+    rules:
+      - alert: HighMessageLatency
+        expr: histogram_quantile(0.95, revoluchat_message_latency_bucket) > 0.2
+        for: 5m
+        annotations:
+          summary: "Message latency P95 > 200ms"
+
+      - alert: ObanQueueBacklog
+        expr: revoluchat_oban_queue_depth{queue="notifications"} > 1000
+        for: 2m
+        annotations:
+          summary: "Notification queue backlog > 1000 jobs"
+
+      - alert: DatabaseDown
+        expr: up{job="revoluchat"} == 0
+        for: 1m
+        annotations:
+          summary: "Revoluchat service down"
+
+      - alert: HighErrorRate
+        expr: rate(phoenix_router_dispatch_stop_duration_count{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        annotations:
+          summary: "Error rate > 5%"

@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────────
+  # Phoenix Elixir Application (Chatbe Backend)
+  # ─────────────────────────────────────────────────────────────────
+  revoluchat:
+    build: .
+    image: revoluchat:enterprise-latest
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - MIX_ENV=prod
+      # Encryption secrets
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:-replace_this_with_a_secure_long_random_string_at_least_64_bytes}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-replace_with_client_webhook_hmac_secret}
+      # Database connection
+      - DATABASE_URL=ecto://postgres:postgres@db/revoluchat_prod
+      # Auth Config (Detached)
+      - JWKS_URL=${JWKS_URL:-https://client-auth.example.com/.well-known/jwks.json}
+      - JWT_ISSUER=${JWT_ISSUER:-client-auth-service}
+      # Redis PubSub for horizontal scaling
+      - REDIS_URL=redis://redis:6379/1
+    # Tunggu database siap, jalankan migration otomatis, lalu start server
+    command: sh -c "/app/bin/migrate && /app/bin/revoluchat start"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ─────────────────────────────────────────────────────────────────
+  # Primary Database (PostgreSQL)
+  # ─────────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=revoluchat_prod
+    volumes:
+      - revoluchat_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────────
+  # Redis (PubSub Backbone for 100k+ connections & Rate Limiting)
+  # ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - revoluchat_redis_data:/data
+
+volumes:
+  revoluchat_pg_data:
+  revoluchat_redis_data:
