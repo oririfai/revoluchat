@@ -9,7 +9,7 @@ defmodule Revoluchat.Workers.FcmPushWorker do
   alias Revoluchat.Notifications
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"app_id" => app_id, "user_id" => user_id, "message" => msg_map}}) do
+  def perform(%Oban.Job{args: args = %{"app_id" => app_id, "user_id" => user_id}}) do
     Logger.info("FcmPushWorker: Starting push dispatch for User #{user_id} in App #{app_id}")
 
     tokens = Notifications.get_push_tokens(app_id, user_id)
@@ -18,31 +18,42 @@ defmodule Revoluchat.Workers.FcmPushWorker do
       Logger.debug("FcmPushWorker: User #{user_id} has no registered push tokens. Skipping.")
       :ok
     else
-      dispatch_to_fcm(tokens, msg_map)
+      dispatch_to_fcm(tokens, args)
     end
   end
 
-  defp dispatch_to_fcm(tokens, msg_map) do
-    # Placeholder struct to mimic external HTTP Post via Req to https://fcm.googleapis.com
+  defp dispatch_to_fcm(tokens, args) do
     # During development/MVP, we mock this as the user has not provided the Service Account JSON yet.
-    _fcm_url = "https://fcm.googleapis.com/v1/projects/YOUR_PROJECT_ID/messages:send"
+    # _fcm_url = "https://fcm.googleapis.com/v1/projects/YOUR_PROJECT_ID/messages:send"
 
     Enum.each(tokens, fn push_token ->
-      payload = build_fcm_payload(push_token.token, msg_map)
+      payload =
+        cond do
+          Map.has_key?(args, "message") ->
+            build_message_payload(push_token.token, args["message"])
 
-      Logger.info(
-        "FcmPushWorker: Simulating FCM Push to token #{push_token.token} (Platform: #{push_token.platform})"
-      )
+          Map.has_key?(args, "call") ->
+            build_call_payload(push_token.token, args["call"])
 
-      Logger.debug("Payload: #{inspect(payload)}")
+          true ->
+            nil
+        end
 
-      # Usually we do something like: Req.post(fcm_url, json: payload, auth: {:bearer, get_fcm_oauth_token()})
+      if payload do
+        Logger.info(
+          "FcmPushWorker: Simulating FCM Push to token #{push_token.token} (Platform: #{push_token.platform})"
+        )
+
+        Logger.debug("Payload: #{inspect(payload)}")
+
+        # Usually we do something like: Req.post(fcm_url, json: payload, auth: {:bearer, get_fcm_oauth_token()})
+      end
     end)
 
     :ok
   end
 
-  defp build_fcm_payload(device_token, msg_map) do
+  defp build_message_payload(device_token, msg_map) do
     %{
       "message" => %{
         "token" => device_token,
@@ -55,6 +66,37 @@ defmodule Revoluchat.Workers.FcmPushWorker do
           "message_id" => msg_map["id"],
           "type" => msg_map["type"],
           "action" => "open_chat"
+        }
+      }
+    }
+  end
+
+  defp build_call_payload(device_token, call_map) do
+    %{
+      "message" => %{
+        "token" => device_token,
+        "android" => %{
+          "priority" => "high"
+        },
+        "apns" => %{
+          "payload" => %{
+            "aps" => %{
+              "content-available" => 1
+            }
+          }
+        },
+        "notification" => %{
+          "title" => "Incoming #{String.capitalize(call_map["type"])} Call",
+          "body" => "#{call_map["caller_name"]} is calling you..."
+        },
+        "data" => %{
+          "call_id" => call_map["call_id"],
+          "caller_id" => to_string(call_map["caller_id"]),
+          "caller_name" => call_map["caller_name"],
+          "caller_photo" => call_map["caller_photo"] || "",
+          "phone_number" => call_map["phone_number"],
+          "type" => call_map["type"],
+          "action" => "incoming_call"
         }
       }
     }

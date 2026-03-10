@@ -3,13 +3,15 @@ defmodule RevoluchatWeb.ConversationController do
 
   alias Revoluchat.Chat
 
-  action_fallback RevoluchatWeb.FallbackController
+  action_fallback(RevoluchatWeb.FallbackController)
 
   # GET /api/v1/conversations
-  def index(conn, _params) do
+  def index(conn, params) do
     user_id = conn.assigns.current_user_id
     app_id = conn.assigns.current_app_id
-    conversations = Chat.list_user_conversations(app_id, user_id)
+    search_term = Map.get(params, "search")
+
+    conversations = Chat.list_user_conversations(app_id, user_id, search: search_term)
 
     json(conn, %{conversations: Enum.map(conversations, &format_conversation/1)})
   end
@@ -52,7 +54,8 @@ defmodule RevoluchatWeb.ConversationController do
       user_a: format_user(c.user_a),
       user_b: format_user(c.user_b),
       last_activity_at: c.last_activity_at,
-      inserted_at: c.inserted_at
+      inserted_at: c.inserted_at,
+      unread_count: c.unread_count
     }
   end
 

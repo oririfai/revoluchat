@@ -1,8 +1,8 @@
 # Find eligible builder and runner images on Hub. Docker Hub's Elixir and Erlang images
 # are deprecated, so we use the Hexpm images instead.
-ARG ELIXIR_VERSION=1.19.2
-ARG OTP_VERSION=27.2.1
-ARG DEBIAN_VERSION=bullseye-20240904-slim
+ARG ELIXIR_VERSION=1.17.2
+ARG OTP_VERSION=27.0.1
+ARG DEBIAN_VERSION=bullseye-20240701-slim
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"

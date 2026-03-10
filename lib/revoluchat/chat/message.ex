@@ -8,21 +8,23 @@ defmodule Revoluchat.Chat.Message do
   @max_body_length 10_000
 
   schema "messages" do
-    field :app_id, :string
-    field :type, :string
-    field :body, :string
-    field :is_encrypted, :boolean, default: false
-    field :client_id, :string
-    field :delivered_at, :utc_datetime_usec
-    field :read_at, :utc_datetime_usec
-    field :edited_at, :utc_datetime_usec
-    field :deleted_at, :utc_datetime_usec
+    field(:app_id, :string)
+    field(:type, :string)
+    field(:body, :string)
+    field(:is_encrypted, :boolean, default: false)
+    field(:client_id, :string)
+    field(:delivered_at, :utc_datetime_usec)
+    field(:read_at, :utc_datetime_usec)
+    field(:edited_at, :utc_datetime_usec)
+    field(:deleted_at, :utc_datetime_usec)
     # sender_id adalah integer (uint dari MySQL user service)
-    field :sender_id, :integer
+    field(:sender_id, :integer)
 
-    belongs_to :conversation, Revoluchat.Chat.Conversation
-    belongs_to :attachment, Revoluchat.Chat.Attachment
-    belongs_to :reply_to, Revoluchat.Chat.Message, foreign_key: :reply_to_id
+    field(:status, :string, virtual: true, default: "sent")
+
+    belongs_to(:conversation, Revoluchat.Chat.Conversation)
+    belongs_to(:attachment, Revoluchat.Chat.Attachment)
+    belongs_to(:reply_to, Revoluchat.Chat.Message, foreign_key: :reply_to_id)
 
     timestamps(type: :utc_datetime_usec)
   end

@@ -13,7 +13,8 @@ defmodule RevoluchatWeb.Plugs.AuthPlug do
 
   def call(conn, _opts) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, %{user_id: user_id, app_id: app_id}} <- Accounts.verify_token(token) do
+         {:ok, %{user_id: user_id, app_id: app_id}} <- Accounts.verify_token(token),
+         {:ok, _user} <- Accounts.verify_user_exists(user_id) do
       conn
       |> assign(:current_user_id, user_id)
       |> assign(:current_app_id, app_id)

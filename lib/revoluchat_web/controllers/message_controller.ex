@@ -3,7 +3,7 @@ defmodule RevoluchatWeb.MessageController do
 
   alias Revoluchat.Chat
 
-  action_fallback RevoluchatWeb.FallbackController
+  action_fallback(RevoluchatWeb.FallbackController)
 
   # GET /api/v1/conversations/:conversation_id/messages
   def index(conn, %{"conversation_id" => conv_id} = params) do
@@ -52,10 +52,18 @@ defmodule RevoluchatWeb.MessageController do
   # ─── Private ─────────────────────────────────────────────────────────────────
 
   defp format_message(m) do
+    status =
+      cond do
+        not is_nil(m.read_at) -> "read"
+        not is_nil(m.delivered_at) -> "delivered"
+        true -> "sent"
+      end
+
     %{
       id: m.id,
       type: m.type,
       body: m.body,
+      status: status,
       sender_id: m.sender_id,
       conversation_id: m.conversation_id,
       attachment_id: m.attachment_id,

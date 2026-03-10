@@ -38,10 +38,11 @@ defmodule Revoluchat.Chat do
   """
   def get_conversation_for_user(app_id, conversation_id, user_id) do
     query =
-      from c in Conversation,
+      from(c in Conversation,
         where: c.app_id == ^app_id,
         where: c.id == ^conversation_id,
         where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
+      )
 
     case Repo.one(query) do
       nil ->
@@ -52,14 +53,53 @@ defmodule Revoluchat.Chat do
     end
   end
 
-  def list_user_conversations(app_id, user_id) do
-    conversations =
-      from(c in Conversation,
-        where: c.app_id == ^app_id,
-        where: c.user_a_id == ^user_id or c.user_b_id == ^user_id,
-        order_by: [desc: c.last_activity_at],
-        preload: [:last_message]
+  def list_user_conversations(app_id, user_id, opts \\ []) do
+    search_term = Keyword.get(opts, :search)
+
+    # Subquery for unread messages count
+    unread_query =
+      from(m in Message,
+        where: m.conversation_id == parent_as(:conversation).id,
+        where: m.sender_id != ^user_id,
+        where: is_nil(m.read_at),
+        select: count(m.id)
       )
+
+    query =
+      from(c in Conversation,
+        as: :conversation,
+        where: c.app_id == ^app_id,
+        where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
+      )
+
+    query =
+      if search_term && search_term != "" do
+        search_pattern = "%#{search_term}%"
+
+        from(c in query,
+          left_join: m in Message,
+          on: m.conversation_id == c.id,
+          left_join: ua in Revoluchat.Accounts.User,
+          on: ua.id == c.user_a_id,
+          left_join: ub in Revoluchat.Accounts.User,
+          on: ub.id == c.user_b_id,
+          where:
+            ilike(ua.username, ^search_pattern) or
+              ilike(ua.name, ^search_pattern) or
+              ilike(ub.username, ^search_pattern) or
+              ilike(ub.name, ^search_pattern) or
+              ilike(m.body, ^search_pattern),
+          distinct: true
+        )
+      else
+        query
+      end
+
+    conversations =
+      query
+      |> order_by([c], desc: c.last_activity_at)
+      |> preload(:last_message)
+      |> select([c], %{c | unread_count: subquery(unread_query)})
       |> Repo.all()
 
     conversations
@@ -121,21 +161,23 @@ defmodule Revoluchat.Chat do
     before_id = Keyword.get(opts, :before_id)
 
     query =
-      from m in Message,
+      from(m in Message,
         where: m.app_id == ^app_id,
         where: m.conversation_id == ^conversation_id,
         where: is_nil(m.deleted_at),
         order_by: [desc: m.inserted_at],
         limit: ^limit,
         preload: [:attachment]
+      )
 
     query =
       if before_id do
         # Ambil inserted_at dari cursor message
         cursor_time = get_message_inserted_at(before_id)
 
-        from m in query,
+        from(m in query,
           where: m.inserted_at < ^cursor_time
+        )
       else
         query
       end

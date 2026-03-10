@@ -12,6 +12,8 @@ defmodule Revoluchat.Chat.Conversation do
     field :user_a_id, :integer
     field :user_b_id, :integer
 
+    field :unread_count, :integer, virtual: true, default: 0
+
     belongs_to :user_a, Revoluchat.Accounts.User, foreign_key: :user_a_id, define_field: false
     belongs_to :user_b, Revoluchat.Accounts.User, foreign_key: :user_b_id, define_field: false
 

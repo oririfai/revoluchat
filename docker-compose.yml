@@ -13,23 +13,27 @@ services:
     environment:
       - PORT=4000
       - MIX_ENV=prod
+      - PHX_SERVER=true
+      - PHX_HOST=${PHX_HOST:-localhost}
       # Encryption secrets
       - SECRET_KEY_BASE=${SECRET_KEY_BASE:-replace_this_with_a_secure_long_random_string_at_least_64_bytes}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://host.docker.internal:8000/api/revoluchat/webhook}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-replace_with_client_webhook_hmac_secret}
       # Database connection
       - DATABASE_URL=ecto://postgres:postgres@db/revoluchat_prod
       # Auth Config (Detached)
       - JWKS_URL=${JWKS_URL:-https://client-auth.example.com/.well-known/jwks.json}
-      - JWT_ISSUER=${JWT_ISSUER:-client-auth-service}
-      # Redis PubSub for horizontal scaling
-      - REDIS_URL=redis://redis:6379/1
+      # Object Storage (Optional MinIO)
+      # - AWS_ACCESS_KEY_ID=minioadmin
+      # - AWS_SECRET_ACCESS_KEY=minioadmin
+      # - MINIO_HOST=minio
+      # - MINIO_PORT=9000
+      # - STORAGE_BUCKET=revoluchat
     # Tunggu database siap, jalankan migration otomatis, lalu start server
     command: sh -c "/app/bin/migrate && /app/bin/revoluchat start"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_started
 
   # ─────────────────────────────────────────────────────────────────
   # Primary Database (PostgreSQL)
@@ -51,17 +55,5 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─────────────────────────────────────────────────────────────────
-  # Redis (PubSub Backbone for 100k+ connections & Rate Limiting)
-  # ─────────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - revoluchat_redis_data:/data
-
 volumes:
   revoluchat_pg_data:
-  revoluchat_redis_data:

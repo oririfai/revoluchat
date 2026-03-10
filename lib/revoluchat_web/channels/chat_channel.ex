@@ -1,7 +1,7 @@
 defmodule RevoluchatWeb.ChatChannel do
   use Phoenix.Channel
 
-  alias Revoluchat.Chat
+  alias Revoluchat.{Chat, Calls, Accounts}
   alias RevoluchatWeb.{Presence, Plugs.RateLimiter}
 
   require Logger
@@ -122,6 +122,149 @@ defmodule RevoluchatWeb.ChatChannel do
     end)
   end
 
+  # ─── CALL SIGNALING (WebRTC) ────────────────────────────────────────────────
+
+  @impl true
+  def handle_in("call:request", %{"type" => call_type, "receiver_id" => receiver_id}, socket) do
+    if_authorized(socket, fn ->
+      user_id = socket.assigns.user_id
+      app_id = socket.assigns.app_id
+      conversation_id = socket.assigns.conversation_id
+
+      # Enforce integer ID for safety
+      receiver_id =
+        if is_binary(receiver_id), do: String.to_integer(receiver_id), else: receiver_id
+
+      # Security: Verify receiver is part of the conversation
+      conversation = Chat.get_conversation!(app_id, conversation_id)
+
+      is_valid_receiver =
+        receiver_id == conversation.user_a_id || receiver_id == conversation.user_b_id
+
+      if not is_valid_receiver do
+        Logger.warning(
+          "User #{user_id} attempted to call non-member #{receiver_id} in conversation #{conversation_id}"
+        )
+
+        {:reply, {:error, %{reason: "invalid_receiver"}}, socket}
+      else
+        case Calls.initiate_call(app_id, conversation_id, user_id, receiver_id, call_type) do
+          {:ok, call, caller_identity} ->
+            # Payload enrichment: Foto, Nama, No HP
+            payload = %{
+              "call_id" => call.id,
+              "type" => call_type,
+              "caller_id" => user_id,
+              "caller_name" => caller_identity.name,
+              "caller_photo" => caller_identity.photo,
+              "phone_number" => caller_identity.phone,
+              "conversation_id" => conversation_id
+            }
+
+            # Broadcast ke partisipan lain di room
+            broadcast_from!(socket, "call:incoming", payload)
+
+            # --- Background Push Notification if offline ---
+            topic_name = "tenant:#{app_id}:room:#{conversation_id}"
+            presence_list = Presence.list(topic_name)
+
+            # Check for receiver (integer or string key)
+            is_receiver_online =
+              Map.has_key?(presence_list, receiver_id) ||
+                Map.has_key?(presence_list, to_string(receiver_id))
+
+            if not is_receiver_online do
+              Logger.info("ChatChannel: User #{receiver_id} offline. Sending Call VoIP Push.")
+
+              %{
+                "app_id" => app_id,
+                "user_id" => receiver_id,
+                "call" => payload
+              }
+              |> Revoluchat.Workers.FcmPushWorker.new()
+              |> Oban.insert()
+            end
+
+            {:reply, {:ok, %{call_id: call.id}}, socket}
+
+          {:error, reason} ->
+            Logger.error("Failed to initiate call: #{inspect(reason)}")
+            {:reply, {:error, %{reason: "failed_to_initiate"}}, socket}
+        end
+      end
+    end)
+  end
+
+  @impl true
+  def handle_in("call:ringing", %{"call_id" => call_id}, socket) do
+    with_call_auth(socket, call_id, fn ->
+      Calls.set_ringing(call_id)
+      broadcast_from!(socket, "call:ringing", %{call_id: call_id})
+      {:noreply, socket}
+    end)
+  end
+
+  @impl true
+  def handle_in("call:respond", %{"call_id" => call_id, "response" => action}, socket) do
+    with_call_auth(socket, call_id, fn ->
+      case action do
+        "accept" ->
+          case Calls.accept_call(call_id) do
+            {:ok, _call} ->
+              broadcast_from!(socket, "call:accepted", %{call_id: call_id})
+              {:reply, :ok, socket}
+
+            {:error, :invalid_status} ->
+              {:reply, {:error, %{reason: "invalid_state"}}, socket}
+          end
+
+        "reject" ->
+          case Calls.reject_call(call_id) do
+            {:ok, call} ->
+              broadcast_from!(socket, "call:rejected", %{call_id: call_id})
+
+              # Emit summary message for rejected call
+              insert_call_summary(call, socket)
+
+              {:reply, :ok, socket}
+
+            _ ->
+              {:reply, {:error, %{reason: "failed"}}, socket}
+          end
+      end
+    end)
+  end
+
+  @impl true
+  def handle_in("call:signal", %{"call_id" => call_id, "signal" => signal}, socket) do
+    with_call_auth(socket, call_id, fn ->
+      # Passthrough signaling data (SDP/ICE)
+      broadcast_from!(socket, "call:signal", %{call_id: call_id, signal: signal})
+      {:noreply, socket}
+    end)
+  end
+
+  @impl true
+  def handle_in("call:hangup", %{"call_id" => call_id} = params, socket) do
+    # Duration is no longer passed to complete_call
+    _duration = Map.get(params, "duration", 0)
+
+    with_call_auth(socket, call_id, fn ->
+      case Calls.complete_call(call_id) do
+        {:ok, call} ->
+          broadcast_from!(socket, "call:hangup", %{call_id: call_id})
+
+          # Emit summary message for completed call
+          insert_call_summary(call, socket)
+
+          {:noreply, socket}
+
+        _ ->
+          {:noreply, socket}
+      end
+    end)
+  end
+
   # ─── PRIVATE HELPERS ─────────────────────────────────────────────────────────
 
   defp if_authorized(socket, callback) do
@@ -213,10 +356,18 @@ defmodule RevoluchatWeb.ChatChannel do
   defp format_messages(messages), do: Enum.map(messages, &format_message/1)
 
   defp format_message(message) do
+    status =
+      cond do
+        not is_nil(message.read_at) -> "read"
+        not is_nil(message.delivered_at) -> "delivered"
+        true -> "sent"
+      end
+
     %{
       id: message.id,
       type: message.type,
       body: message.body,
+      status: status,
       is_encrypted: message.is_encrypted,
       sender_id: message.sender_id,
       conversation_id: message.conversation_id,
@@ -240,6 +391,29 @@ defmodule RevoluchatWeb.ChatChannel do
   end
 
   defp url(id), do: "/api/v1/attachments/#{id}"
+
+  defp with_call_auth(socket, call_id, callback) do
+    user_id = socket.assigns.user_id
+
+    if Calls.is_participant?(call_id, user_id) do
+      callback.()
+    else
+      Logger.warning("Unauthorized signaling attempt by User #{user_id} for Call #{call_id}")
+      {:reply, {:error, %{reason: "unauthorized_signaling"}}, socket}
+    end
+  end
+
+  defp insert_call_summary(call, socket) do
+    payload = Calls.generate_summary_payload(call)
+
+    case Chat.insert_message(payload) do
+      {:ok, message} ->
+        broadcast!(socket, "new_message", format_message(message))
+
+      _ ->
+        Logger.error("Failed to insert call summary message for Call #{call.id}")
+    end
+  end
 
   defp format_dt(nil), do: nil
   defp format_dt(dt), do: DateTime.to_iso8601(dt)
