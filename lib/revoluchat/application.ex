@@ -8,15 +8,15 @@ defmodule Revoluchat.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      Revoluchat.Repo,
+      {DNSCluster, query: Application.get_env(:revoluchat, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: Revoluchat.PubSub},
+      # Presence (untuk user online status) must start before Telemetry
+      RevoluchatWeb.Presence,
       RevoluchatWeb.Telemetry,
       Revoluchat.Telemetry,
       {TelemetryMetricsPrometheus,
        [metrics: Revoluchat.Telemetry.metrics() ++ RevoluchatWeb.Telemetry.metrics()]},
-      Revoluchat.Repo,
-      {DNSCluster, query: Application.get_env(:revoluchat, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Revoluchat.PubSub},
-      # Presence (untuk user online status)
-      RevoluchatWeb.Presence,
       # Oban — background job processing
       {Oban, Application.fetch_env!(:revoluchat, Oban)},
       # gRPC Server

@@ -65,8 +65,8 @@ syntax = "proto3";
 package user.v1;
 
 service UserService {
-  // Dipanggil oleh Revoluchat setiap kali user mencoba connect ke Socket
-  // atau saat pengiriman pesan untuk validasi & fecth metadata.
+  // Called by Revoluchat whenever a user attempts to connect to a Socket
+  // or during message sending for validation & metadata retrieval.
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
 }
 
@@ -94,7 +94,7 @@ USER_SERVICE_GRPC_ENDPOINT=user-service:50051
 ```
 
 > [!TIP]
-> **Faster Integration**: If your User Service is built with Go, use our [Revoluchat Go SDK](https://github.com/oririfai/revoluchat-go-sdk.git) to skip the gRPC boilerplate and integrate with a simple "pointing" pattern.
+> **Faster Integration**: If your User Service is built with Go, use our [Revoluchat Go SDK](https://github.com/oririfai/revoluchat-go-sdk.git) to skip gRPC boilerplate and integrate with a simple "pointing" pattern.
 
 ### 2. Conversation Service (Inbound)
 
@@ -104,7 +104,7 @@ Revoluchat acts as a **gRPC Server** allowing your backend to manage chat rooms 
 
 ```proto
 service ConversationService {
-  // Membuat atau mengambil percakapan (1-on-1) antara dua user.
+  // Creates or retrieves an existing (1-on-1) conversation between two users.
   rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
 }
 ```
@@ -113,10 +113,10 @@ service ConversationService {
 
 ## 🔐 Security & Payload Flow
 
-1. **Client** (App) mengirimkan **JWT** (RS256) saat inisialisasi Socket.
-2. **Revoluchat** memverifikasi tanda tangan JWT menggunakan **JWKS** (Public Key).
-3. **Revoluchat** mengekstrak `user_id` dari claim `sub`.
-4. **Revoluchat** memanggil **User Service** via **gRPC** `GetUser(user_id)` untuk memastikan user tersebut valid dan aktif sebelum mengizinkan koneksi Socket.
+1. **Client** (App) sends a **JWT** (RS256) during Socket initialization.
+2. **Revoluchat** verifies the JWT signature using **JWKS** (Public Key).
+3. **Revoluchat** extracts the `user_id` from the `sub` claim.
+4. **Revoluchat** calls the **User Service** via **gRPC** `GetUser(user_id)` to ensure the user is valid and active before granting a Socket connection.
 
 ## 📁 Project Structure
 

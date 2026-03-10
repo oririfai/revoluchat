@@ -72,10 +72,10 @@ defmodule Revoluchat.Telemetry do
       summary("oban.job.stop.duration", tags: [:queue, :worker], unit: {:native, :millisecond}),
 
       # VM Metrics
-      summary("vm.memory.total", unit: {:byte, :kilobyte}),
-      summary("vm.total_run_queue_lengths.total"),
-      summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.system_counts.process_count")
+      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
+      last_value("vm.total_run_queue_lengths.total"),
+      last_value("vm.total_run_queue_lengths.cpu"),
+      last_value("vm.system_counts.process_count")
     ]
   end
 
@@ -87,8 +87,17 @@ defmodule Revoluchat.Telemetry do
   end
 
   def dispatch_active_connections do
-    count = RevoluchatWeb.Presence.list("") |> map_size()
-    :telemetry.execute([:revoluchat, :connections, :active], %{count: count}, %{})
+    # Check if Presence process exists before listing to avoid badarg during startup
+    if Process.whereis(RevoluchatWeb.Presence) do
+      try do
+        count = RevoluchatWeb.Presence.list("chat:*") |> map_size()
+        :telemetry.execute([:revoluchat, :connections, :active], %{count: count}, %{})
+      catch
+        _, _ -> :ok
+      end
+    else
+      :ok
+    end
   end
 
   def dispatch_oban_queue_depth do
