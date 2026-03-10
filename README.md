@@ -93,6 +93,9 @@ Set the endpoint in your `.env`:
 USER_SERVICE_GRPC_ENDPOINT=user-service:50051
 ```
 
+> [!TIP]
+> **Faster Integration**: If your User Service is built with Go, use our [Revoluchat Go SDK](https://github.com/oririfai/revoluchat-go-sdk.git) to skip the gRPC boilerplate and integrate with a simple "pointing" pattern.
+
 ### 2. Conversation Service (Inbound)
 
 Revoluchat acts as a **gRPC Server** allowing your backend to manage chat rooms administratively.
