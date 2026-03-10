@@ -27,3 +27,7 @@ revoluchat-*.tar
 
 # Environment variables — jangan commit!
 .env
+
+# Key files — jangan commit!
+/priv/keys/*
+!/priv/keys/.gitkeep
