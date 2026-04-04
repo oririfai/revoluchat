@@ -2,66 +2,62 @@ defmodule RevoluchatWeb.UserSocket do
   use Phoenix.Socket
 
   require Logger
+  alias Revoluchat.Accounts.ApiKey
 
   # Channel "tenant:*" will be routed to ChatChannel
   # where the suffix ":room:ID" is parsed manually string.split
   channel("tenant:*", RevoluchatWeb.ChatChannel)
+  channel("user:*", RevoluchatWeb.UserChannel)
 
   @impl true
-  def connect(%{"token" => token} = params, socket, _connect_info) do
-    # 1. License Check (Circuit Breaker)
-    case Revoluchat.Licensing.Core.get_active_license() do
-      nil ->
-        Logger.error("WebSocket rejected: No license found.")
+  def connect(%{"token" => token, "api_key" => api_key} = _params, socket, _connect_info) do
+    with {:api_key, %ApiKey{app_id: api_key_app_id}} <- {:api_key, Revoluchat.Accounts.get_api_key_by_key(api_key)},
+         {:token, {:ok, claims}} <- {:token, Revoluchat.Accounts.verify_token(token)},
+         {:user, {:ok, user}} <- {:user, Revoluchat.Accounts.verify_user_exists(claims.user_id)} do
+      
+      user_id = claims.user_id
+      # Prioritize app_id from token claims, fallback to API Key app_id
+      app_id = claims.app_id || api_key_app_id
+      
+      # ENSURE user_id is integer for standard DB compatibility if it's numeric
+      user_id =
+        if is_binary(user_id) and Regex.match?(~r/^\d+$/, user_id),
+          do: String.to_integer(user_id),
+          else: user_id
+
+      # AUTOMATIC REGISTRATION: 
+      # Inisialisasi data pengguna dan registrasikan ke tabel user_chats jika belum ada
+      # Update juga data profil terbaru (name, phone, avatar)
+      case Revoluchat.Accounts.ensure_user_chat_registered(user_id, app_id, user) do
+        {:ok, _user_chat} ->
+          socket =
+            socket
+            |> assign(:user_id, user_id)
+            |> assign(:app_id, app_id)
+
+          Logger.info("Socket connected: user_id=#{user_id}, app_id=#{app_id}")
+          {:ok, socket}
+        
+        {:error, reason} ->
+          Logger.error("Socket connection failed: Could not register user #{user_id}. Reason: #{inspect(reason)}")
+          :error
+      end
+    else
+      {:api_key, nil} ->
+        Logger.error("WebSocket rejected: Invalid or inactive API Key: #{api_key}")
         :error
 
-      license ->
-        if Revoluchat.Licensing.Core.is_valid?() do
-          # 2. Verify JWT via JWKS (Stateless)
-          case Revoluchat.Accounts.verify_token(token) do
-            {:ok, %{user_id: user_id, app_id: app_id}} ->
-              # ENSURE user_id is integer for standard DB compatibility if it's numeric
-              user_id =
-                if is_binary(user_id) and Regex.match?(~r/^\d+$/, user_id),
-                  do: String.to_integer(user_id),
-                  else: user_id
+      {:token, {:error, reason}} ->
+        Logger.error("WebSocket rejected: Token verification failed. Reason: #{inspect(reason)}")
+        :error
 
-              # 3. Stateful User Check via gRPC to Main App
-              case Revoluchat.Accounts.verify_user_exists(user_id) do
-                {:ok, _user} ->
-                  socket =
-                    socket
-                    |> assign(:user_id, user_id)
-                    |> assign(:app_id, app_id)
+      {:user, {:error, :user_not_found}} ->
+        Logger.error("WebSocket rejected: User ID not found in User Service (revolu-be) via gRPC.")
+        :error
 
-                  Logger.info("Socket connected for user #{user_id}")
-                  {:ok, socket}
-
-                {:error, :user_not_found} ->
-                  Logger.error(
-                    "WebSocket rejected: User #{user_id} not found in main app via gRPC."
-                  )
-
-                  :error
-
-                {:error, reason} ->
-                  Logger.error(
-                    "WebSocket rejected: gRPC error for user #{user_id}: #{inspect(reason)}"
-                  )
-
-                  :error
-              end
-
-            _ ->
-              :error
-          end
-        else
-          Logger.error(
-            "WebSocket rejected: License invalid/expired. Status: #{license.status}, Valid Until: #{license.valid_until}"
-          )
-
-          :error
-        end
+      error ->
+        Logger.error("WebSocket rejected: Unknown error. #{inspect(error)}")
+        :error
     end
   end
 

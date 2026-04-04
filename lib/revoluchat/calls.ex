@@ -12,15 +12,17 @@ defmodule Revoluchat.Calls do
   @doc """
   Gets a single call.
   """
-  def get_call!(id), do: Repo.get!(Call, id)
+  def get_call(id), do: Repo.get(Call, id)
 
   @doc """
   Verifies if a user is a participant of a call.
   """
-  def is_participant?(call_id, user_id) do
+  def is_participant?(app_id, call_id, user_id) do
     query =
       from(c in Call,
-        where: c.id == ^call_id and (c.caller_id == ^user_id or c.receiver_id == ^user_id)
+        where:
+          c.app_id == ^app_id and c.id == ^call_id and
+            (c.caller_id == ^user_id or c.receiver_id == ^user_id)
       )
 
     Repo.exists?(query)
@@ -59,12 +61,14 @@ defmodule Revoluchat.Calls do
       started_at: DateTime.utc_now()
     }
 
-    with {:ok, call} <- create_call(attrs),
-         {:ok, caller} <- Accounts.get_user(caller_id) do
+    with {:ok, call} <- create_call(attrs) do
+      # Use local cache for caller identity
+      caller = Accounts.get_registered_user(app_id, caller_id)
+      
       caller_identity = %{
-        name: caller.name,
-        photo: caller.avatar_url,
-        phone: caller.phone
+        name: (caller && caller.name) || "Unknown",
+        photo: (caller && caller.avatar_url),
+        phone: (caller && caller.phone)
       }
 
       {:ok, call, caller_identity}
@@ -72,37 +76,46 @@ defmodule Revoluchat.Calls do
   end
 
   def set_ringing(call_id) do
-    call = get_call!(call_id)
-    update_call(call, %{status: "ringing"})
+    case get_call(call_id) do
+      nil -> {:error, :not_found}
+      call -> update_call(call, %{status: "ringing"})
+    end
   end
 
   def accept_call(call_id) do
-    call = get_call!(call_id)
-    # Only allow answering if dialed or ringing
-    if call.status in ["dialing", "ringing"] do
-      update_call(call, %{status: "connected"})
-    else
-      {:error, :invalid_status}
+    case get_call(call_id) do
+      nil -> {:error, :not_found}
+      call ->
+        # Only allow answering if dialed or ringing
+        if call.status in ["dialing", "ringing"] do
+          update_call(call, %{status: "connected"})
+        else
+          {:error, :invalid_status}
+        end
     end
   end
 
   def reject_call(call_id) do
-    call = get_call!(call_id)
-    update_call(call, %{status: "rejected", ended_at: DateTime.utc_now()})
+    case get_call(call_id) do
+      nil -> {:error, :not_found}
+      call -> update_call(call, %{status: "rejected", ended_at: DateTime.utc_now()})
+    end
   end
 
   def complete_call(call_id) do
-    call = get_call!(call_id)
-    ended_at = DateTime.utc_now()
+    case get_call(call_id) do
+      nil -> {:error, :not_found}
+      call ->
+        ended_at = DateTime.utc_now()
+        # Calculate duration server-side to prevent client manipulation
+        duration = if call.started_at, do: DateTime.diff(ended_at, call.started_at), else: 0
 
-    # Calculate duration server-side to prevent client manipulation
-    duration = if call.started_at, do: DateTime.diff(ended_at, call.started_at), else: 0
-
-    update_call(call, %{
-      status: "completed",
-      ended_at: ended_at,
-      duration_seconds: duration
-    })
+        update_call(call, %{
+          status: "completed",
+          ended_at: ended_at,
+          duration_seconds: duration
+        })
+    end
   end
 
   @doc """
@@ -150,7 +163,9 @@ defmodule Revoluchat.Calls do
   defp pad(num), do: num |> Integer.to_string() |> String.pad_leading(2, "0")
 
   def cancel_call(call_id) do
-    call = get_call!(call_id)
-    update_call(call, %{status: "missed", ended_at: DateTime.utc_now()})
+    case get_call(call_id) do
+      nil -> {:error, :not_found}
+      call -> update_call(call, %{status: "missed", ended_at: DateTime.utc_now()})
+    end
   end
 end

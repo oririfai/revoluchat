@@ -24,7 +24,10 @@ config :revoluchat, RevoluchatWeb.Endpoint,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "SXJr0AWmXbqP+obzXa7L1I8XZ8B2i8mTmKcyrNb/IqWy3s67LEVgEyEo5SPSEsq9",
-  watchers: []
+  watchers: [
+    esbuild: {Esbuild, :install_and_run, [:revoluchat, ~w(--watch)]},
+    tailwind: {Tailwind, :install_and_run, [:revoluchat, ~w(--watch)]}
+  ]
 
 # ## SSL Support
 #
@@ -54,6 +57,10 @@ config :revoluchat, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
+
+# Ensure debug logs are visible in development
+default_level = System.get_env("LOG_LEVEL") || "debug"
+config :logger, level: String.to_atom(default_level)
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

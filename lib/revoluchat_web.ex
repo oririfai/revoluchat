@@ -26,6 +26,7 @@ defmodule RevoluchatWeb do
       # Import common connection and controller functions to use in pipelines
       import Plug.Conn
       import Phoenix.Controller
+      import Phoenix.LiveView.Router
     end
   end
 
@@ -53,6 +54,63 @@ defmodule RevoluchatWeb do
         endpoint: RevoluchatWeb.Endpoint,
         router: RevoluchatWeb.Router,
         statics: RevoluchatWeb.static_paths()
+    end
+  end
+
+  def html do
+    quote do
+      use Phoenix.Component
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller,
+        only: [get_csrf_token: 0, view_module: 1, view_template: 1]
+
+      # Include general helpers for rendering HTML
+      unquote(html_helpers())
+    end
+  end
+
+  def live_view do
+    quote do
+      use Phoenix.LiveView,
+        layout: {RevoluchatWeb.Layouts, :admin}
+
+      unquote(html_helpers())
+    end
+  end
+
+  def live_component do
+    quote do
+      use Phoenix.LiveComponent
+
+      unquote(html_helpers())
+    end
+  end
+
+  def component do
+    quote do
+      use Phoenix.Component
+
+      unquote(html_helpers())
+    end
+  end
+
+  defp html_helpers do
+    quote do
+      # HTML-related exports
+      import Phoenix.HTML
+
+      # Shortcut for generating JS commands
+      alias Phoenix.LiveView.JS
+
+      # Routes generation
+      unquote(verified_routes())
+
+      # UI Components
+      use PetalComponents
+      import PetalComponents.Button, only: [icon_button: 1]
+      import PetalComponents.Modal, except: [modal: 1]
+      import RevoluchatWeb.DashboardComponents
     end
   end
 

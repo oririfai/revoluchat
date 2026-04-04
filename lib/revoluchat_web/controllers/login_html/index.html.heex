@@ -1,0 +1,45 @@
+<div class="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
+  <div class="sm:mx-auto sm:w-full sm:max-w-md">
+    <div class="flex justify-center items-center gap-2">
+        <span class="text-primary-600 font-black text-4xl tracking-tighter">REVOLU</span>
+        <span class="text-gray-400 font-light text-3xl">CHAT</span>
+    </div>
+    <h2 class="mt-6 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
+      Sign in to Enterprise Dashboard
+    </h2>
+  </div>
+
+  <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-[480px]">
+    <.card class="px-6 py-12 shadow sm:rounded-lg sm:px-12">
+      <.form :let={f} for={%{}} as={:auth} action={~p"/admin/login"} class="space-y-6">
+        <%= if @error_message do %>
+          <.alert color="danger" label={@error_message} />
+        <% end %>
+
+        <.field
+          label="Email address"
+          field={f[:email]}
+          type="email"
+          required
+        />
+
+        <.field
+          label="Password"
+          field={f[:password]}
+          type="password"
+          required
+        />
+
+        <div class="pt-2">
+          <.revolu_button type="submit" variant="solid" class="w-full justify-center">
+            Sign in
+          </.revolu_button>
+        </div>
+      </.form>
+    </.card>
+    
+    <div class="mt-8 text-center text-xs text-gray-400">
+      Revoluchat Enterprise v0.1.0 &copy; 2026
+    </div>
+  </div>
+</div>

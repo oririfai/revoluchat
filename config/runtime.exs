@@ -31,10 +31,16 @@ config :cors_plug,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   headers: ["Authorization", "Content-Type", "Accept", "Origin"]
 
-# ─── Object Storage (MinIO) Config ──────────────────────────────────────────
-# Config ini dijalankan di semua env (dev/prod) saat runtime
-if System.get_env("AWS_ACCESS_KEY_ID") do
+# ─── JWKS URL (Runtime, dibaca saat container start) ───────────────────────────
+jwks_url = System.get_env("JWKS_URL") || "http://host.docker.internal:8089/jwks"
+config :revoluchat, :jwks_url, jwks_url
+
+# ─── Object Storage (MinIO / Cloudinary) Config ──────────────────────────────
+storage_provider = System.get_env("STORAGE_PROVIDER") || "s3"
+
+if storage_provider == "s3" and System.get_env("AWS_ACCESS_KEY_ID") do
   minio_host = System.get_env("MINIO_HOST") || "minio"
+  minio_public_host = System.get_env("MINIO_PUBLIC_HOST") || minio_host
   minio_port = String.to_integer(System.get_env("MINIO_PORT") || "9000")
 
   config :ex_aws,
@@ -48,8 +54,48 @@ if System.get_env("AWS_ACCESS_KEY_ID") do
     ]
 
   config :revoluchat, :storage,
+    provider: :s3,
     bucket: System.get_env("STORAGE_BUCKET") || "revoluchat",
-    presigned_url_expiry: 3600
+    presigned_url_expiry: 3600,
+    public_host: minio_public_host
+end
+
+if storage_provider == "cloudinary" do
+  cloudinary_url = System.get_env("CLOUDINARY_URL")
+
+  config_data =
+    if cloudinary_url && String.starts_with?(cloudinary_url, "cloudinary://") do
+      uri = URI.parse(cloudinary_url)
+      [api_key, api_secret] = String.split(uri.userinfo || ":", ":")
+
+      %{
+        cloud_name: uri.host,
+        api_key: api_key,
+        api_secret: api_secret
+      }
+    else
+      %{
+        cloud_name: System.get_env("CLOUDINARY_CLOUD_NAME"),
+        api_key: System.get_env("CLOUDINARY_API_KEY"),
+        api_secret: System.get_env("CLOUDINARY_API_SECRET")
+      }
+    end
+
+  if config_data.cloud_name && config_data.api_key && config_data.api_secret do
+    config :revoluchat, :storage,
+      provider: :cloudinary,
+      cloud_name: config_data.cloud_name,
+      api_key: config_data.api_key,
+      api_secret: config_data.api_secret
+
+    config :cloudinex,
+      api_key: config_data.api_key,
+      secret: config_data.api_secret,
+      cloud_name: config_data.cloud_name
+  else
+    # Fallback to empty if not fully configured, though the adapter should handle nil
+    config :revoluchat, :storage, provider: :cloudinary
+  end
 end
 
 if config_env() == :prod do
@@ -72,12 +118,6 @@ if config_env() == :prod do
 
   # User Service Integration via gRPC handled by Revoluchat.Grpc.UserClient
 
-  # Config RSA Public Key Path
-  rsa_public_key_path = System.get_env("RSA_PUBLIC_KEY_PATH")
-
-  if rsa_public_key_path do
-    config :revoluchat, :rsa_public_key_path, rsa_public_key_path
-  end
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

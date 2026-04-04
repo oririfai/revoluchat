@@ -26,9 +26,13 @@ defmodule Revoluchat.Chat do
         %Conversation{}
         |> Conversation.changeset(%{app_id: app_id, user_a_id: a, user_b_id: b})
         |> Repo.insert()
+        |> case do
+          {:ok, conv} -> {:ok, Repo.preload(conv, :last_message)}
+          error -> error
+        end
 
       conversation ->
-        {:ok, conversation}
+        {:ok, Repo.preload(conversation, :last_message)}
     end
   end
 
@@ -44,7 +48,10 @@ defmodule Revoluchat.Chat do
         where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
       )
 
-    case Repo.one(query) do
+    query
+    |> preload(:last_message)
+    |> Repo.one()
+    |> case do
       nil ->
         {:error, :not_found}
 
@@ -72,6 +79,7 @@ defmodule Revoluchat.Chat do
         where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
       )
 
+
     query =
       if search_term && search_term != "" do
         search_pattern = "%#{search_term}%"
@@ -79,16 +87,7 @@ defmodule Revoluchat.Chat do
         from(c in query,
           left_join: m in Message,
           on: m.conversation_id == c.id,
-          left_join: ua in Revoluchat.Accounts.User,
-          on: ua.id == c.user_a_id,
-          left_join: ub in Revoluchat.Accounts.User,
-          on: ub.id == c.user_b_id,
-          where:
-            ilike(ua.username, ^search_pattern) or
-              ilike(ua.name, ^search_pattern) or
-              ilike(ub.username, ^search_pattern) or
-              ilike(ub.name, ^search_pattern) or
-              ilike(m.body, ^search_pattern),
+          where: ilike(m.body, ^search_pattern),
           distinct: true
         )
       else
@@ -99,7 +98,7 @@ defmodule Revoluchat.Chat do
       query
       |> order_by([c], desc: c.last_activity_at)
       |> preload(:last_message)
-      |> select([c], %{c | unread_count: subquery(unread_query)})
+      |> select_merge([c], %{unread_count: subquery(unread_query)})
       |> Repo.all()
 
     conversations
@@ -192,28 +191,28 @@ defmodule Revoluchat.Chat do
     |> Repo.preload(:conversation)
   end
 
-  def mark_read(message_id, user_id) do
-    message = Repo.get!(Message, message_id)
-
-    # Hanya recipient yang bisa mark read
-    if message.sender_id == user_id do
-      {:error, :cannot_mark_own_message}
-    else
-      message
-      |> Message.mark_read_changeset()
-      |> Repo.update()
+  def mark_read(app_id, message_id, user_id) do
+    with {:ok, message} <- get_message_for_user(app_id, message_id, user_id) do
+      # Hanya recipient yang bisa mark read
+      if message.sender_id == user_id do
+        {:error, :cannot_mark_own_message}
+      else
+        message
+        |> Message.mark_read_changeset()
+        |> Repo.update()
+      end
     end
   end
 
-  def soft_delete_message(message_id, user_id) do
-    message = Repo.get!(Message, message_id)
-
-    if message.sender_id != user_id do
-      {:error, :unauthorized}
-    else
-      message
-      |> Message.soft_delete_changeset()
-      |> Repo.update()
+  def soft_delete_message(app_id, message_id, user_id) do
+    with {:ok, message} <- get_message_for_user(app_id, message_id, user_id) do
+      if message.sender_id != user_id do
+        {:error, :unauthorized}
+      else
+        message
+        |> Message.soft_delete_changeset()
+        |> Repo.update()
+      end
     end
   end
 
@@ -227,8 +226,11 @@ defmodule Revoluchat.Chat do
     uuid = Ecto.UUID.generate()
     filename = attrs["filename"] || "unnamed"
     ext = Path.extname(filename)
+    mime_type = attrs["mime_type"]
+    category = get_category_from_mime(mime_type)
     date = Date.to_string(Date.utc_today())
-    storage_key = "uploads/#{date}/#{uuid}#{ext}"
+    
+    storage_key = "attachments/#{category}/#{date}/#{uuid}#{ext}"
 
     params =
       Map.merge(attrs, %{
@@ -240,8 +242,8 @@ defmodule Revoluchat.Chat do
 
     case Repo.insert(changeset) do
       {:ok, attachment} ->
-        case Storage.presigned_put_url(storage_key, content_type: attachment.mime_type) do
-          {:ok, url} -> {:ok, attachment, url}
+        case Storage.presigned_upload_data(storage_key, content_type: attachment.mime_type) do
+          {:ok, upload_data} -> {:ok, attachment, upload_data}
           {:error, reason} -> {:error, reason}
         end
 
@@ -250,11 +252,21 @@ defmodule Revoluchat.Chat do
     end
   end
 
+  defp get_category_from_mime(nil), do: "files"
+  defp get_category_from_mime(mime) do
+    cond do
+      String.starts_with?(mime, "image/") -> "images"
+      String.starts_with?(mime, "audio/") or mime == "application/ogg" -> "audio"
+      String.starts_with?(mime, "video/") -> "video"
+      true -> "files"
+    end
+  end
+
   @doc """
   Confirm upload: Verify object exists in storage & update status to approved.
   """
-  def confirm_attachment(id, uploader_id) do
-    case Repo.get(Attachment, id) do
+  def confirm_attachment(app_id, id, uploader_id) do
+    case Repo.get_by(Attachment, id: id, app_id: app_id) do
       nil ->
         {:error, :not_found}
 
@@ -289,13 +301,10 @@ defmodule Revoluchat.Chat do
 
   @doc """
   Generate presigned download URL for an approved attachment.
-  Checks if the user has access to the attachment (TODO: Implement strict access control).
+  Strict access control: uploader OR participant in a conversation using this attachment.
   """
-  def get_attachment_download_url(attachment_id, _user_id) do
-    with {:ok, attachment} <- get_approved_attachment(attachment_id) do
-      # TODO: Verify if user_id is participant in conversation involving this attachment
-      # For now, allow if authenticated (Phase 3 MVP)
-
+  def get_attachment_download_url(app_id, attachment_id, user_id) do
+    with {:ok, attachment} <- get_approved_attachment_for_user(app_id, attachment_id, user_id) do
       case Storage.presigned_get_url(attachment.storage_key) do
         {:ok, url} -> {:ok, url}
         {:error, reason} -> {:error, reason}
@@ -304,6 +313,45 @@ defmodule Revoluchat.Chat do
   end
 
   # ─── Private ─────────────────────────────────────────────────────────────────
+
+  defp get_message_for_user(app_id, message_id, user_id) do
+    query =
+      from(m in Message,
+        join: c in Conversation,
+        on: m.conversation_id == c.id,
+        where: m.app_id == ^app_id and m.id == ^message_id,
+        where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
+      )
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      message -> {:ok, message}
+    end
+  end
+
+  defp get_approved_attachment_for_user(app_id, attachment_id, user_id) do
+    # 1. Check if uploader
+    case Repo.get_by(Attachment, id: attachment_id, app_id: app_id, status: "approved") do
+      %Attachment{uploader_id: ^user_id} = att ->
+        {:ok, att}
+
+      att when not is_nil(att) ->
+        # 2. Check if participant in any conversation containing this attachment
+        is_participant =
+          from(m in Message,
+            join: c in Conversation,
+            on: m.conversation_id == c.id,
+            where: m.attachment_id == ^attachment_id,
+            where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
+          )
+          |> Repo.exists?()
+
+        if is_participant, do: {:ok, att}, else: {:error, :not_found}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
 
   defp get_approved_attachment(id) do
     case Repo.get(Attachment, id) do

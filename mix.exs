@@ -52,10 +52,24 @@ defmodule Revoluchat.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_live_view, "~> 1.0.0"},
+      {:phoenix_live_reload, "~> 1.5", only: :dev},
+      {:petal_components, "~> 2.6"},
+      {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
+      {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
+      {:heroicons,
+       github: "tailwindlabs/heroicons",
+       tag: "v2.1.1",
+       sparse: "optimized",
+       app: false,
+       compile: false,
+       depth: 1},
 
       # Auth — JWT RS256 verification only (token diterbitkan user service)
       {:joken, "~> 2.6"},
       {:joken_jwks, "~> 1.6"},
+      {:bcrypt_elixir, "~> 3.0"},
 
       # HTTP Client for Webhooks
       {:req, "~> 0.4"},
@@ -65,8 +79,9 @@ defmodule Revoluchat.MixProject do
 
       # Object storage (S3 / MinIO)
       {:ex_aws, "~> 2.5"},
-      {:ex_aws_s3, "~> 2.5"},
-      {:hackney, "~> 1.20"},
+      {:ex_aws_s3, "~> 2.0"},
+      {:hackney, "~> 1.9"},
+      {:cloudinex, "~> 0.6.0"},
       {:sweet_xml, "~> 0.7"},
 
       # Rate limiting
@@ -99,10 +114,17 @@ defmodule Revoluchat.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["tailwind revoluchat", "esbuild revoluchat"],
+      "assets.deploy": [
+        "tailwind revoluchat --minify",
+        "esbuild revoluchat --minify",
+        "phx.digest"
+      ],
       precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end

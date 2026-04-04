@@ -12,8 +12,9 @@ defmodule Revoluchat.Accounts.Token do
 
   @impl true
   def token_config do
-    # Hanya validasi exp dan iss — skip audience untuk fleksibilitas B2B
-    default_claims(skip: [:aud])
+    # Skip validasi :aud dan :iss karena JWT ini diterbitkan oleh
+    # sistem eksternal (sistem Auth milik tenant/klien).
+    default_claims(skip: [:aud, :iss])
   end
 
   @doc """
@@ -26,7 +27,7 @@ defmodule Revoluchat.Accounts.Token do
     case verify_and_validate(token_string) do
       {:ok, %{"sub" => sub} = claims} ->
         user_id = parse_user_id(sub)
-        app_id = Map.get(claims, "app_id", "default_app")
+        app_id = Map.get(claims, "app_id")
         {:ok, %{user_id: user_id, app_id: app_id}}
 
       {:ok, _claims} ->

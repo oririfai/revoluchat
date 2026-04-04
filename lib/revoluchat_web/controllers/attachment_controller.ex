@@ -20,18 +20,21 @@ defmodule RevoluchatWeb.AttachmentController do
 
   def confirm(conn, %{"id" => id}) do
     user_id = conn.assigns[:current_user_id]
+    app_id = conn.assigns[:current_app_id]
 
-    with {:ok, attachment} <- Chat.confirm_attachment(id, user_id) do
+    with {:ok, attachment} <- Chat.confirm_attachment(app_id, id, user_id),
+         {:ok, url} <- Chat.get_attachment_download_url(app_id, id, user_id) do
       conn
       |> put_view(json: AttachmentJSON)
-      |> render(:show, attachment: attachment)
+      |> render(:show, attachment: attachment, url: url)
     end
   end
 
   def download(conn, %{"id" => id}) do
     user_id = conn.assigns[:current_user_id]
+    app_id = conn.assigns[:current_app_id]
 
-    case Chat.get_attachment_download_url(id, user_id) do
+    case Chat.get_attachment_download_url(app_id, id, user_id) do
       {:ok, url} ->
         json(conn, %{url: url})
 

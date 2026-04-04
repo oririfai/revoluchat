@@ -39,6 +39,10 @@ RUN mix deps.compile
 
 COPY priv priv
 COPY lib lib
+COPY assets assets
+
+# deploy assets
+RUN mix assets.deploy
 
 # Compile the release
 RUN mix compile
@@ -81,4 +85,10 @@ USER nobody
 # above and adding an entrypoint. See https://github.com/krallin/tini for details
 # ENTRYPOINT ["/tini", "--"]
 
-CMD ["/app/bin/revoluchat", "start"]
+# Copy entrypoint script and set permissions
+COPY priv/scripts/docker-entrypoint.sh ./bin/docker-entrypoint.sh
+USER root
+RUN chmod +x ./bin/docker-entrypoint.sh
+USER nobody
+
+ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]

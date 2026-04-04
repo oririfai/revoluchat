@@ -22,6 +22,10 @@ defmodule Revoluchat.Application do
       # gRPC Server
       {GRPC.Server.Supervisor,
        endpoint: Revoluchat.Grpc.Endpoint, port: 50051, start_server: true},
+      # JWKS Strategy (untuk dynamic fetch public keys dari user-be)
+      Revoluchat.Accounts.JwksStrategy,
+      # gRPC Client Supervisor (untuk call ke user service)
+      {GRPC.Client.Supervisor, []},
       # Start to serve requests, typically the last entry
       RevoluchatWeb.Endpoint
     ]

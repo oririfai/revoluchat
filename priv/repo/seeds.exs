@@ -11,9 +11,10 @@ query = import Ecto.Query
 
 existing =
   Repo.one(
-    from c in Conversation,
+    from(c in Conversation,
       where: (c.user_a_id == 1 and c.user_b_id == 2) or (c.user_a_id == 2 and c.user_b_id == 1),
       limit: 1
+    )
   )
 
 if existing do
@@ -31,4 +32,19 @@ else
   IO.puts("✅ Created NEW Conversation.")
   IO.puts("   ID: #{conv.id}")
   IO.puts("   Users: 1 <-> 2")
+end
+
+
+# 3. Default Admin Creation
+alias Revoluchat.Accounts.Admin
+
+admin_email = "admin@revoluchat.com"
+admin_password = "password123"
+
+unless Repo.get_by(Admin, email: admin_email) do
+  %Admin{}
+  |> Admin.changeset(%{email: admin_email, password: admin_password})
+  |> Repo.insert!()
+
+  IO.puts("✅ Created NEW default admin: #{admin_email} / #{admin_password}")
 end

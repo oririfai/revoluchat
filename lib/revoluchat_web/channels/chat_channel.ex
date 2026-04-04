@@ -1,7 +1,7 @@
 defmodule RevoluchatWeb.ChatChannel do
   use Phoenix.Channel
 
-  alias Revoluchat.{Chat, Calls, Accounts}
+  alias Revoluchat.{Chat, Calls}
   alias RevoluchatWeb.{Presence, Plugs.RateLimiter}
 
   require Logger
@@ -10,47 +10,76 @@ defmodule RevoluchatWeb.ChatChannel do
 
   @impl true
   def join(topic, _params, socket) do
+    Logger.info("ChatChannel: ENTRY join/3 topic=#{topic}")
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
 
-    case String.split(topic, ":") do
-      ["tenant", topic_app_id, "room", conversation_id] ->
-        # Strictly enforce that the requested topic's tenant matches the socket's authenticated tenant
-        if topic_app_id != app_id do
-          {:error, %{reason: "tenant_mismatch"}}
-        else
-          # Verify membership — user harus peserta conversation
-          case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
-            {:ok, _conversation} ->
-              socket = assign(socket, :conversation_id, conversation_id)
+    Logger.info("ChatChannel: START join topic=#{topic} user_id=#{user_id} app_id=#{app_id}")
 
-              # Kirim 50 pesan terakhir
-              messages = Chat.list_messages(app_id, conversation_id, limit: 50)
+    try do
+      case String.split(topic, ":") do
+        ["tenant", topic_app_id, "room", conversation_id] ->
+          if topic_app_id != app_id do
+            Logger.warning("ChatChannel: Tenant mismatch. Socket app_id=#{app_id}, Topic app_id=#{topic_app_id}")
+            {:error, %{reason: "tenant_mismatch"}}
+          else
+            case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
+              {:ok, _conversation} ->
+                socket = assign(socket, :conversation_id, conversation_id)
 
-              # Track presence setelah join sukses
-              send(self(), :after_join)
+                # Fetch 50 messages history
+                messages = Chat.list_messages(app_id, conversation_id, limit: 50)
+                
+                # Fetch user details for history from local DB (Cache)
+                sender_ids = Enum.map(messages, & &1.sender_id) |> Enum.uniq()
+                users_data = Revoluchat.Accounts.list_registered_users_by_ids(app_id, sender_ids)
+                users_map = Map.new(users_data, fn u -> {u.id, u} end)
 
-              {:ok, %{messages: format_messages(messages)}, socket}
+                # Schedule presence tracking
+                send(self(), :after_join)
 
-            {:error, :not_found} ->
-              {:error, %{reason: "unauthorized"}}
+                Logger.info("ChatChannel: User #{user_id} successfully joined room #{conversation_id}")
+
+                reply = %{
+                  messages: Enum.map(messages, fn m ->
+                    format_message_with_user(m, users_map)
+                  end)
+                }
+                {:ok, reply, socket}
+
+              {:error, :not_found} ->
+                Logger.warning("ChatChannel: User #{user_id} unauthorized for room #{conversation_id}")
+                {:error, %{reason: "unauthorized"}}
+            end
           end
-        end
 
-      _ ->
-        {:error, %{reason: "invalid_topic_format"}}
+        _ ->
+          Logger.warning("ChatChannel: Invalid topic format: #{topic}")
+          {:error, %{reason: "invalid_topic_format"}}
+      end
+    rescue
+      e ->
+        Logger.error("ChatChannel: CRASH during join/3 for User #{user_id} on topic #{topic}. Error: #{inspect(e)}")
+        {:error, %{reason: "internal_server_error"}}
     end
   end
 
   @impl true
   def handle_info(:after_join, socket) do
-    {:ok, _} =
-      Presence.track(socket, socket.assigns.user_id, %{
-        online_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-        typing: false
-      })
+    user_id = socket.assigns.user_id
+    
+    case Presence.track(socket, user_id, %{
+      online_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+      typing: false
+    }) do
+      {:ok, _} ->
+        Logger.info("ChatChannel: Presence tracked for User #{user_id}")
+        push(socket, "presence_state", Presence.list(socket))
 
-    push(socket, "presence_state", Presence.list(socket))
+      {:error, reason} ->
+        Logger.error("ChatChannel: Failed to track presence for User #{user_id}: #{inspect(reason)}")
+    end
+
     {:noreply, socket}
   end
 
@@ -105,8 +134,9 @@ defmodule RevoluchatWeb.ChatChannel do
   def handle_in("mark_read", %{"message_id" => message_id}, socket) do
     if_authorized(socket, fn ->
       user_id = socket.assigns.user_id
+      app_id = socket.assigns.app_id
 
-      case Chat.mark_read(message_id, user_id) do
+      case Chat.mark_read(app_id, message_id, user_id) do
         {:ok, message} ->
           broadcast!(socket, "message_read", %{
             message_id: message_id,
@@ -135,62 +165,66 @@ defmodule RevoluchatWeb.ChatChannel do
       receiver_id =
         if is_binary(receiver_id), do: String.to_integer(receiver_id), else: receiver_id
 
-      # Security: Verify receiver is part of the conversation
-      conversation = Chat.get_conversation!(app_id, conversation_id)
+      # Security: Verify membership via get_conversation_for_user
+      case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
+        {:ok, conversation} ->
+          is_valid_receiver =
+            receiver_id == conversation.user_a_id || receiver_id == conversation.user_b_id
 
-      is_valid_receiver =
-        receiver_id == conversation.user_a_id || receiver_id == conversation.user_b_id
+          if not is_valid_receiver do
+            Logger.warning(
+              "User #{user_id} attempted to call non-member #{receiver_id} in conversation #{conversation_id}"
+            )
 
-      if not is_valid_receiver do
-        Logger.warning(
-          "User #{user_id} attempted to call non-member #{receiver_id} in conversation #{conversation_id}"
-        )
+            {:reply, {:error, %{reason: "invalid_receiver"}}, socket}
+          else
+            case Calls.initiate_call(app_id, conversation_id, user_id, receiver_id, call_type) do
+              {:ok, call, caller_identity} ->
+                # Payload enrichment: Foto, Nama, No HP
+                payload = %{
+                  "call_id" => call.id,
+                  "type" => call_type,
+                  "caller_id" => user_id,
+                  "caller_name" => caller_identity.name,
+                  "caller_photo" => caller_identity.photo,
+                  "phone_number" => caller_identity.phone,
+                  "conversation_id" => conversation_id
+                }
 
-        {:reply, {:error, %{reason: "invalid_receiver"}}, socket}
-      else
-        case Calls.initiate_call(app_id, conversation_id, user_id, receiver_id, call_type) do
-          {:ok, call, caller_identity} ->
-            # Payload enrichment: Foto, Nama, No HP
-            payload = %{
-              "call_id" => call.id,
-              "type" => call_type,
-              "caller_id" => user_id,
-              "caller_name" => caller_identity.name,
-              "caller_photo" => caller_identity.photo,
-              "phone_number" => caller_identity.phone,
-              "conversation_id" => conversation_id
-            }
+                # Broadcast ke partisipan lain di room
+                broadcast_from!(socket, "call:incoming", payload)
 
-            # Broadcast ke partisipan lain di room
-            broadcast_from!(socket, "call:incoming", payload)
+                # --- Background Push Notification if offline ---
+                topic_name = "tenant:#{app_id}:room:#{conversation_id}"
+                presence_list = Presence.list(topic_name)
 
-            # --- Background Push Notification if offline ---
-            topic_name = "tenant:#{app_id}:room:#{conversation_id}"
-            presence_list = Presence.list(topic_name)
+                # Check for receiver (integer or string key)
+                is_receiver_online =
+                  Map.has_key?(presence_list, receiver_id) ||
+                    Map.has_key?(presence_list, to_string(receiver_id))
 
-            # Check for receiver (integer or string key)
-            is_receiver_online =
-              Map.has_key?(presence_list, receiver_id) ||
-                Map.has_key?(presence_list, to_string(receiver_id))
+                if not is_receiver_online do
+                  Logger.info("ChatChannel: User #{receiver_id} offline. Sending Call VoIP Push.")
 
-            if not is_receiver_online do
-              Logger.info("ChatChannel: User #{receiver_id} offline. Sending Call VoIP Push.")
+                  %{
+                    "app_id" => app_id,
+                    "user_id" => receiver_id,
+                    "call" => payload
+                  }
+                  |> Revoluchat.Workers.FcmPushWorker.new()
+                  |> Oban.insert()
+                end
 
-              %{
-                "app_id" => app_id,
-                "user_id" => receiver_id,
-                "call" => payload
-              }
-              |> Revoluchat.Workers.FcmPushWorker.new()
-              |> Oban.insert()
+                {:reply, {:ok, %{call_id: call.id}}, socket}
+
+              {:error, reason} ->
+                Logger.error("Failed to initiate call: #{inspect(reason)}")
+                {:reply, {:error, %{reason: "failed_to_initiate"}}, socket}
             end
+          end
 
-            {:reply, {:ok, %{call_id: call.id}}, socket}
-
-          {:error, reason} ->
-            Logger.error("Failed to initiate call: #{inspect(reason)}")
-            {:reply, {:error, %{reason: "failed_to_initiate"}}, socket}
-        end
+        {:error, :not_found} ->
+          {:reply, {:error, %{reason: "unauthorized"}}, socket}
       end
     end)
   end
@@ -295,13 +329,38 @@ defmodule RevoluchatWeb.ChatChannel do
 
     case Chat.insert_message(attrs) do
       {:ok, message} ->
-        formatted_message = format_message(message)
+        # Fetch sender info for broadcast from local DB (cache)
+        user = Revoluchat.Accounts.get_registered_user(app_id, message.sender_id)
+        
+        formatted_message = 
+          message 
+          |> format_message() 
+          |> Map.put(:user, %{
+            id: if(user, do: user.user_id, else: message.sender_id),
+            name: (user && user.name) || "Unknown",
+            phone: if(user, do: user.phone, else: nil),
+            avatar_url: if(user, do: user.avatar_url, else: nil)
+          })
 
         # Broadcast ke semua (termasuk sender untuk konfirmasi visual real-time)
         broadcast!(socket, "new_message", formatted_message)
 
-        # --- Observability: Track delivered messages & latency ---
-        latency_ms = DateTime.diff(DateTime.utc_now(), message.inserted_at, :millisecond)
+        # 3. Broadcast conversation_updated to user topics for real-time list updates
+        # Fetch conversation to get participants
+        {:ok, conversation} = Chat.get_conversation_for_user(app_id, conversation_id, user_id)
+        
+        update_payload = %{
+          conversation_id: conversation_id,
+          last_message: formatted_message,
+          unread_count_update: 1 # Increment for receiver
+        }
+
+        # Broadcast to user_a and user_b (this covers both sender and receiver in direct chat)
+        RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_a_id}", "conversation_updated", update_payload)
+        RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_b_id}", "conversation_updated", update_payload)
+
+            # --- Observability: Track delivered messages & latency ---
+            latency_ms = DateTime.diff(DateTime.utc_now(), message.inserted_at, :millisecond)
 
         :telemetry.execute(
           [:revoluchat, :messages, :delivered],
@@ -315,34 +374,47 @@ defmodule RevoluchatWeb.ChatChannel do
           %{app_id: app_id}
         )
 
-        # Push Notification Logic (Smart Dispatching)
-        conversation = Chat.get_conversation!(app_id, conversation_id)
-
+        # Use pre-fetched conversation if available or fetch just once
+        # Reuse user_id to find receiver efficiently
         receiver_id =
-          if message.sender_id == conversation.user_a_id,
-            do: conversation.user_b_id,
-            else: conversation.user_a_id
+          if message.sender_id == (socket.assigns[:user_a_id] || 0), # This is a placeholder, better fetch conversation once
+            do: (socket.assigns[:user_b_id] || 0), # We need to fetch it
+            else: (socket.assigns[:user_a_id] || 0)
 
-        # Cek apakah receiver sedang aktif di topic ini via Tracker
-        topic_name = "tenant:#{app_id}:room:#{conversation_id}"
-        is_receiver_online = Map.has_key?(Presence.list(topic_name), receiver_id)
+        # Better: just fetch conversation ONCE and use it
+        case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
+          {:ok, conversation} ->
+            receiver_id = if message.sender_id == conversation.user_a_id, do: conversation.user_b_id, else: conversation.user_a_id
 
-        if not is_receiver_online do
-          Logger.info(
-            "ChatChannel: User #{receiver_id} offline in topic. Enqueueing FCM Push Worker."
-          )
+            # Cek apakah receiver sedang aktif di topic ini via Tracker
+            topic_name = "tenant:#{app_id}:room:#{conversation_id}"
+            presence_list = Presence.list(topic_name)
+            
+            # Keys in Presence.list are strings, so we check both integer and string
+            is_receiver_online = 
+              Map.has_key?(presence_list, receiver_id) || 
+              Map.has_key?(presence_list, to_string(receiver_id))
 
-          %{
-            "app_id" => app_id,
-            "user_id" => receiver_id,
-            "message" => formatted_message
-          }
-          |> Revoluchat.Workers.FcmPushWorker.new()
-          |> Oban.insert()
-        else
-          Logger.debug(
-            "ChatChannel: User #{receiver_id} is online via WebSocket. Skipping FCM Push."
-          )
+            if not is_receiver_online do
+              Logger.info(
+                "ChatChannel: User #{receiver_id} offline in topic. Enqueueing FCM Push Worker."
+              )
+
+              %{
+                "app_id" => app_id,
+                "user_id" => receiver_id,
+                "message" => formatted_message
+              }
+              |> Revoluchat.Workers.FcmPushWorker.new()
+              |> Oban.insert()
+            else
+              Logger.debug(
+                "ChatChannel: User #{receiver_id} is online via WebSocket. Skipping FCM Push."
+              )
+            end
+
+          {:error, _} ->
+            Logger.warning("ChatChannel: Could not find conversation #{conversation_id} for push logic. app_id: #{app_id}")
         end
 
         {:reply, {:ok, %{message_id: message.id}}, socket}
@@ -354,6 +426,19 @@ defmodule RevoluchatWeb.ChatChannel do
   end
 
   defp format_messages(messages), do: Enum.map(messages, &format_message/1)
+
+  defp format_message_with_user(message, users_map) do
+    user = Map.get(users_map, message.sender_id)
+    
+    message
+    |> format_message()
+    |> Map.put(:user, %{
+      id: if(user, do: user.id, else: message.sender_id),
+      name: if(user, do: user.name, else: "Unknown"),
+      phone: if(user, do: user.phone, else: nil),
+      avatar_url: if(user, do: user.avatar_url, else: nil)
+    })
+  end
 
   defp format_message(message) do
     status =
@@ -380,22 +465,25 @@ defmodule RevoluchatWeb.ChatChannel do
     }
   end
 
+  defp format_attachment(%Ecto.Association.NotLoaded{}), do: nil
   defp format_attachment(nil), do: nil
 
   defp format_attachment(att) do
+    {:ok, url} = Revoluchat.Storage.presigned_get_url(att.storage_key)
+
     %{
-      id: url(att.id),
+      id: att.id,
+      url: url,
       mime_type: att.mime_type,
       size: att.size
     }
   end
 
-  defp url(id), do: "/api/v1/attachments/#{id}"
-
   defp with_call_auth(socket, call_id, callback) do
     user_id = socket.assigns.user_id
+    app_id = socket.assigns.app_id
 
-    if Calls.is_participant?(call_id, user_id) do
+    if Calls.is_participant?(app_id, call_id, user_id) do
       callback.()
     else
       Logger.warning("Unauthorized signaling attempt by User #{user_id} for Call #{call_id}")

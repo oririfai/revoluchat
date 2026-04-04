@@ -55,25 +55,5 @@ case query.rows do
     IO.puts("Conversation already exists: #{Ecto.UUID.cast!(id_bin)}")
 end
 
-# 4. Seed License (FIXED: Delete old ones first to avoid unique constraint issue)
-IO.puts("Cleaning old licenses...")
-Repo.delete_all(Revoluchat.Licensing.License)
-
-jwt =
-  "eyJhbGciOiJub25lIn0.eyJleHAiOjE5MjQ5MDgyMDAsInN0YXR1cyI6ImFjdGl2ZSIsImp0aSI6ImRlbW8tbGljZW5zZSJ9.signature"
-
-case Revoluchat.Licensing.Core.apply_license(jwt) do
-  {:ok, _} ->
-    IO.puts("License applied successfully.")
-
-  {:error, %Ecto.Changeset{} = cs} ->
-    IO.puts("Failed to apply license (Changeset error): #{inspect(cs.errors)}")
-
-  {:error, reason} ->
-    IO.puts("Failed to apply license (Reason): #{inspect(reason)}")
-
-  _ ->
-    IO.puts("License status confirmed.")
-end
 
 IO.puts("--- Demo Seeding Complete ---")
