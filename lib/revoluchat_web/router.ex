@@ -88,6 +88,9 @@ defmodule RevoluchatWeb.Router do
     get("/analytics/active_connections", AnalyticsController, :active_connections)
     get("/analytics/message_throughput", AnalyticsController, :message_throughput)
     get("/analytics/active_conversations", AnalyticsController, :active_conversations)
+
+    # RTC Config
+    get("/rtc_config", RTCController, :index)
   end
 
   scope "/api/v1", RevoluchatWeb do

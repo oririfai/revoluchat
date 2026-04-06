@@ -1,7 +1,7 @@
 defmodule RevoluchatWeb.ChatChannel do
   use Phoenix.Channel
 
-  alias Revoluchat.{Chat, Calls}
+  alias Revoluchat.{Chat, Calls, Accounts}
   alias RevoluchatWeb.{Presence, Plugs.RateLimiter}
 
   require Logger
@@ -180,19 +180,25 @@ defmodule RevoluchatWeb.ChatChannel do
           else
             case Calls.initiate_call(app_id, conversation_id, user_id, receiver_id, call_type) do
               {:ok, call, caller_identity} ->
+                caller_display_name = if (is_nil(caller_identity.name) or caller_identity.name == ""), do: caller_identity.phone, else: caller_identity.name
+
                 # Payload enrichment: Foto, Nama, No HP
                 payload = %{
                   "call_id" => call.id,
                   "type" => call_type,
                   "caller_id" => user_id,
-                  "caller_name" => caller_identity.name,
+                  "caller_name" => caller_display_name,
                   "caller_photo" => caller_identity.photo,
                   "phone_number" => caller_identity.phone,
                   "conversation_id" => conversation_id
                 }
 
-                # Broadcast ke partisipan lain di room
+                # 1. Broadcast to participants within the room (existing)
                 broadcast_from!(socket, "call:incoming", payload)
+
+                # 2. Broadcast to receiver specifically via their private user topic
+                # This is CRUCIAL for global signaling (receiving calls outside the room)
+                RevoluchatWeb.Endpoint.broadcast("user:#{receiver_id}", "call:incoming", payload)
 
                 # --- Background Push Notification if offline ---
                 topic_name = "tenant:#{app_id}:room:#{conversation_id}"
@@ -234,7 +240,7 @@ defmodule RevoluchatWeb.ChatChannel do
     with_call_auth(socket, call_id, fn ->
       Calls.set_ringing(call_id)
       broadcast_from!(socket, "call:ringing", %{call_id: call_id})
-      {:noreply, socket}
+      {:reply, :ok, socket}
     end)
   end
 
@@ -244,18 +250,63 @@ defmodule RevoluchatWeb.ChatChannel do
       case action do
         "accept" ->
           case Calls.accept_call(call_id) do
-            {:ok, _call} ->
-              broadcast_from!(socket, "call:accepted", %{call_id: call_id})
+            {:ok, call} ->
+              app_id = socket.assigns.app_id
+              # Fetch identities from local cache safely
+              caller = Accounts.get_registered_user(app_id, call.caller_id)
+              receiver = Accounts.get_registered_user(app_id, call.receiver_id)
+
+              caller_display_name = if(caller && caller.name && caller.name != "", do: caller.name, else: (caller && caller.phone) || "User")
+              receiver_display_name = if(receiver && receiver.name && receiver.name != "", do: receiver.name, else: (receiver && receiver.phone) || "User")
+
+              payload = %{
+                "call_id" => call_id,
+                "status" => "connected",
+                "caller_id" => call.caller_id,
+                "caller_name" => caller_display_name,
+                "receiver_id" => call.receiver_id,
+                "receiver_name" => receiver_display_name
+              }
+
+              # 1. Broadast to Room (for everyone in conversation)
+              payload_with_event = Map.put(payload, "event", "call:accepted")
+              broadcast!(socket, "call:accepted", payload)
+
+              # 2. Force broadcast to Caller's Private Channel (for global UI update)
+              caller_topic = "user:#{call.caller_id}"
+              Logger.info("ChatChannel: Force broadcasting call:accepted to caller at #{caller_topic}")
+              RevoluchatWeb.Endpoint.broadcast!(caller_topic, "call:accepted", payload)
+              
+              # 3. Force broadcast to Receiver's Private Channel (for consistency)
+              receiver_topic = "user:#{call.receiver_id}"
+              RevoluchatWeb.Endpoint.broadcast!(receiver_topic, "call:accepted", payload)
+
               {:reply, :ok, socket}
 
             {:error, :invalid_status} ->
               {:reply, {:error, %{reason: "invalid_state"}}, socket}
+
+            error ->
+              Logger.error("ChatChannel: Failed to accept call #{call_id}: #{inspect(error)}")
+              {:reply, {:error, %{reason: "failed"}}, socket}
           end
 
         "reject" ->
           case Calls.reject_call(call_id) do
             {:ok, call} ->
-              broadcast_from!(socket, "call:rejected", %{call_id: call_id})
+              payload = %{
+                "call_id" => call_id,
+                "caller_id" => call.caller_id,
+                "receiver_id" => call.receiver_id
+              }
+
+              # 1. Broadcast to Room
+              broadcast_from!(socket, "call:rejected", payload)
+
+              # 2. Force broadcast to Caller's Private Channel (for UI updates)
+              target_topic = "user:#{call.caller_id}"
+              Logger.info("ChatChannel: Broadcasting call:rejected to #{target_topic}")
+              RevoluchatWeb.Endpoint.broadcast!(target_topic, "call:rejected", payload)
 
               # Emit summary message for rejected call
               insert_call_summary(call, socket)
@@ -274,7 +325,7 @@ defmodule RevoluchatWeb.ChatChannel do
     with_call_auth(socket, call_id, fn ->
       # Passthrough signaling data (SDP/ICE)
       broadcast_from!(socket, "call:signal", %{call_id: call_id, signal: signal})
-      {:noreply, socket}
+      {:reply, :ok, socket}
     end)
   end
 
@@ -286,15 +337,20 @@ defmodule RevoluchatWeb.ChatChannel do
     with_call_auth(socket, call_id, fn ->
       case Calls.complete_call(call_id) do
         {:ok, call} ->
+          # 1. Broadcast to Room
           broadcast_from!(socket, "call:hangup", %{call_id: call_id})
+
+          # 2. Force broadcast to both caller and receiver private channels
+          RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:hangup", %{"call_id" => call_id})
+          RevoluchatWeb.Endpoint.broadcast!("user:#{call.receiver_id}", "call:hangup", %{"call_id" => call_id})
 
           # Emit summary message for completed call
           insert_call_summary(call, socket)
 
-          {:noreply, socket}
+          {:reply, :ok, socket}
 
         _ ->
-          {:noreply, socket}
+          {:reply, :ok, socket}
       end
     end)
   end
@@ -483,11 +539,17 @@ defmodule RevoluchatWeb.ChatChannel do
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
 
-    if Calls.is_participant?(app_id, call_id, user_id) do
-      callback.()
-    else
-      Logger.warning("Unauthorized signaling attempt by User #{user_id} for Call #{call_id}")
-      {:reply, {:error, %{reason: "unauthorized_signaling"}}, socket}
+    try do
+      if Calls.is_participant?(app_id, call_id, user_id) do
+        callback.()
+      else
+        Logger.warning("Unauthorized signaling attempt by User #{user_id} for Call #{call_id}")
+        {:reply, {:error, %{reason: "unauthorized_signaling"}}, socket}
+      end
+    rescue
+      e ->
+        Logger.error("Signaling internal error for Call #{call_id}: #{inspect(e)}")
+        {:reply, {:error, %{reason: "internal_error"}}, socket}
     end
   end
 

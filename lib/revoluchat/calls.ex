@@ -12,20 +12,30 @@ defmodule Revoluchat.Calls do
   @doc """
   Gets a single call.
   """
-  def get_call(id), do: Repo.get(Call, id)
+  def get_call(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get(Call, uuid)
+      _ -> nil
+    end
+  end
 
   @doc """
   Verifies if a user is a participant of a call.
   """
   def is_participant?(app_id, call_id, user_id) do
-    query =
-      from(c in Call,
-        where:
-          c.app_id == ^app_id and c.id == ^call_id and
-            (c.caller_id == ^user_id or c.receiver_id == ^user_id)
-      )
+    case Ecto.UUID.cast(call_id) do
+      {:ok, uuid} ->
+        query =
+          from(c in Call,
+            where:
+              c.app_id == ^app_id and c.id == ^uuid and
+                (c.caller_id == ^user_id or c.receiver_id == ^user_id)
+          )
 
-    Repo.exists?(query)
+        Repo.exists?(query)
+      
+      _ -> false
+    end
   end
 
   @doc """
@@ -86,11 +96,17 @@ defmodule Revoluchat.Calls do
     case get_call(call_id) do
       nil -> {:error, :not_found}
       call ->
-        # Only allow answering if dialed or ringing
-        if call.status in ["dialing", "ringing"] do
-          update_call(call, %{status: "connected"})
+        # Idempotent check: if already connected, just return ok
+        if call.status == "connected" do
+           {:ok, call}
         else
-          {:error, :invalid_status}
+          # Only allow answering if dialed or ringing
+          if call.status in ["dialing", "ringing"] do
+            update_call(call, %{status: "connected"})
+          else
+            Logger.warning("Calls: Attempted to accept call #{call_id} in invalid state: #{call.status}")
+            {:error, :invalid_status}
+          end
         end
     end
   end

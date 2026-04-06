@@ -90,6 +90,12 @@ config :hammer,
        cleanup_interval_ms: 60_000 * 10
      ]}
 
+# ─── WebRTC ICE Servers ──────────────────────────────────────────────────────
+# Default public STUN as fallback. Production TURNs should be set via ICE_SERVERS env.
+config :revoluchat, :ice_servers, [
+  %{urls: "stun:stun.l.google.com:19302"}
+]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

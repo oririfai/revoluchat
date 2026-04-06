@@ -35,6 +35,20 @@ config :cors_plug,
 jwks_url = System.get_env("JWKS_URL") || "http://host.docker.internal:8089/jwks"
 config :revoluchat, :jwks_url, jwks_url
 
+# ─── WebRTC ICE Servers (Dynamic via Environment Var) ─────────────────────────
+if ice_servers_json = System.get_env("ICE_SERVERS") do
+  case Jason.decode(ice_servers_json) do
+    {:ok, servers} -> 
+      # Convert string keys to atoms for Elixir Map consistency
+      atomized_servers = Enum.map(servers, fn entry ->
+        for {k, v} <- entry, into: %{}, do: {String.to_existing_atom(k), v}
+      end)
+      config :revoluchat, :ice_servers, atomized_servers
+    _ -> 
+      :ok
+  end
+end
+
 # ─── Object Storage (MinIO / Cloudinary) Config ──────────────────────────────
 storage_provider = System.get_env("STORAGE_PROVIDER") || "s3"
 
