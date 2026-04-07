@@ -6,7 +6,7 @@ defmodule Revoluchat.Calls do
   import Ecto.Query, warn: false
   alias Revoluchat.Repo
 
-  alias Revoluchat.Calls.Call
+  alias Revoluchat.Calls.{Call, CallHistory}
   alias Revoluchat.Accounts
 
   @doc """
@@ -114,7 +114,11 @@ defmodule Revoluchat.Calls do
   def reject_call(call_id) do
     case get_call(call_id) do
       nil -> {:error, :not_found}
-      call -> update_call(call, %{status: "rejected", ended_at: DateTime.utc_now()})
+      call ->
+        with {:ok, updated_call} <- update_call(call, %{status: "rejected", ended_at: DateTime.utc_now()}) do
+          record_history(updated_call)
+          {:ok, updated_call}
+        end
     end
   end
 
@@ -123,14 +127,24 @@ defmodule Revoluchat.Calls do
       nil -> {:error, :not_found}
       call ->
         ended_at = DateTime.utc_now()
+        # If call was never connected, it's a missed/cancelled call
+        new_status = if call.status == "connected", do: "completed", else: "missed"
+        
         # Calculate duration server-side to prevent client manipulation
-        duration = if call.started_at, do: DateTime.diff(ended_at, call.started_at), else: 0
+        # Duration is only relevant if it was actually connected
+        duration = 
+          if call.status == "connected" and call.started_at, 
+            do: DateTime.diff(ended_at, call.started_at), 
+            else: 0
 
-        update_call(call, %{
-          status: "completed",
+        with {:ok, updated_call} <- update_call(call, %{
+          status: new_status,
           ended_at: ended_at,
           duration_seconds: duration
-        })
+        }) do
+          record_history(updated_call)
+          {:ok, updated_call}
+        end
     end
   end
 
@@ -139,13 +153,14 @@ defmodule Revoluchat.Calls do
   """
   def generate_summary_payload(%Call{} = call) do
     duration_str = format_duration(call.duration_seconds || 0)
+    type_label = if call.type == "video", do: "Panggilan video", else: "Panggilan suara"
 
     status_text =
       case call.status do
-        "completed" -> "Panggilan berakhir"
-        "missed" -> "Panggilan tidak terjawab"
-        "rejected" -> "Panggilan ditolak"
-        _ -> "Panggilan selesai"
+        "completed" -> "#{type_label} berakhir"
+        "missed" -> "#{type_label} tidak terjawab"
+        "rejected" -> "#{type_label} ditolak"
+        _ -> "#{type_label} selesai"
       end
 
     %{
@@ -181,7 +196,75 @@ defmodule Revoluchat.Calls do
   def cancel_call(call_id) do
     case get_call(call_id) do
       nil -> {:error, :not_found}
-      call -> update_call(call, %{status: "missed", ended_at: DateTime.utc_now()})
+      call ->
+        with {:ok, updated_call} <- update_call(call, %{status: "missed", ended_at: DateTime.utc_now()}) do
+          record_history(updated_call)
+          {:ok, updated_call}
+        end
     end
+  end
+
+  @doc """
+  List call history for a specific user.
+  Includes the "other party" identity for re-calling.
+  """
+  def list_call_history(app_id, user_id, limit \\ 50) do
+    query =
+      from(ch in CallHistory,
+        where: ch.app_id == ^app_id and ch.user_id == ^user_id,
+        order_by: [desc: ch.inserted_at],
+        limit: ^limit
+      )
+
+    history_records = Repo.all(query)
+    other_party_ids = Enum.map(history_records, & &1.other_party_id) |> Enum.uniq()
+    
+    # Fetch user identities for the "other party"
+    users_data = Accounts.list_registered_users_by_ids(app_id, other_party_ids)
+    users_map = Map.new(users_data, fn u -> {u.id, u} end)
+
+    Enum.map(history_records, fn rec ->
+      other = Map.get(users_map, rec.other_party_id)
+      Map.merge(rec, %{
+        other_party_name: (other && other.name) || "Unknown",
+        other_party_avatar: (other && other.avatar_url),
+        other_party_phone: (other && other.phone)
+      })
+    end)
+  end
+
+  # ─── PRIVATE HELPERS ─────────────────────────────────────────────────────────
+
+  defp record_history(%Call{} = call) do
+    # Record history for BOTH participants
+    
+    # 1. Caller's record (Outgoing)
+    caller_history = %{
+      app_id: call.app_id,
+      user_id: call.caller_id,
+      other_party_id: call.receiver_id,
+      direction: "outgoing",
+      type: call.type,
+      status: call.status,
+      duration_seconds: call.duration_seconds || 0,
+      started_at: call.started_at,
+      conversation_id: call.conversation_id
+    }
+
+    # 2. Receiver's record (Incoming)
+    receiver_history = %{
+      app_id: call.app_id,
+      user_id: call.receiver_id,
+      other_party_id: call.caller_id,
+      direction: "incoming",
+      type: call.type,
+      status: call.status,
+      duration_seconds: call.duration_seconds || 0,
+      started_at: call.started_at,
+      conversation_id: call.conversation_id
+    }
+
+    %CallHistory{} |> CallHistory.changeset(caller_history) |> Repo.insert()
+    %CallHistory{} |> CallHistory.changeset(receiver_history) |> Repo.insert()
   end
 end

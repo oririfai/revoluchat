@@ -21,6 +21,7 @@ defmodule Revoluchat.Chat.Message do
     field(:sender_id, :integer)
 
     field(:status, :string, virtual: true, default: "sent")
+    field(:metadata, :map)
 
     belongs_to(:conversation, Revoluchat.Chat.Conversation)
     belongs_to(:attachment, Revoluchat.Chat.Attachment)
@@ -35,6 +36,7 @@ defmodule Revoluchat.Chat.Message do
       :app_id,
       :type,
       :body,
+      :metadata,
       :is_encrypted,
       :client_id,
       :sender_id,
@@ -43,8 +45,8 @@ defmodule Revoluchat.Chat.Message do
       :reply_to_id
     ])
     |> validate_required([:app_id, :type, :conversation_id, :sender_id])
-    |> validate_inclusion(:type, ["text", "attachment"],
-      message: "harus 'text' atau 'attachment'"
+    |> validate_inclusion(:type, ["text", "attachment", "system_call_summary"],
+      message: "harus 'text', 'attachment', atau 'system_call_summary'"
     )
     |> validate_length(:body, max: @max_body_length)
     |> validate_no_html(:body)
@@ -81,6 +83,9 @@ defmodule Revoluchat.Chat.Message do
       type == "attachment" && is_nil(attachment_id) ->
         add_error(changeset, :attachment_id, "wajib diisi untuk tipe attachment")
 
+      type == "system_call_summary" ->
+        changeset
+        
       true ->
         changeset
     end

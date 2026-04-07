@@ -91,6 +91,9 @@ defmodule RevoluchatWeb.Router do
 
     # RTC Config
     get("/rtc_config", RTCController, :index)
+
+    # Call History
+    get("/calls/history", CallController, :history)
   end
 
   scope "/api/v1", RevoluchatWeb do
