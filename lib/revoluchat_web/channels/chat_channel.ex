@@ -152,6 +152,30 @@ defmodule RevoluchatWeb.ChatChannel do
     end)
   end
 
+  @impl true
+  def handle_in("delete_message", %{"message_id" => message_id}, socket) do
+    if_authorized(socket, fn ->
+      user_id = socket.assigns.user_id
+      app_id = socket.assigns.app_id
+
+      case Chat.soft_delete_message(app_id, message_id, user_id) do
+        {:ok, message} ->
+          broadcast!(socket, "message_deleted", %{
+            message_id: message_id,
+            deleted_at: DateTime.to_iso8601(message.deleted_at)
+          })
+
+          {:reply, :ok, socket}
+
+        {:error, :unauthorized} ->
+          {:reply, {:error, %{reason: "unauthorized"}}, socket}
+
+        {:error, _} ->
+          {:reply, {:error, %{reason: "not_found"}}, socket}
+      end
+    end)
+  end
+
   # ─── CALL SIGNALING (WebRTC) ────────────────────────────────────────────────
 
   @impl true
@@ -517,6 +541,7 @@ defmodule RevoluchatWeb.ChatChannel do
       attachment: format_attachment(message.attachment),
       delivered_at: format_dt(message.delivered_at),
       read_at: format_dt(message.read_at),
+      deleted_at: format_dt(message.deleted_at),
       inserted_at: format_dt(message.inserted_at)
     }
   end
@@ -531,7 +556,8 @@ defmodule RevoluchatWeb.ChatChannel do
       id: att.id,
       url: url,
       mime_type: att.mime_type,
-      size: att.size
+      size: att.size,
+      metadata: att.metadata
     }
   end
 

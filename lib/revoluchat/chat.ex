@@ -163,7 +163,6 @@ defmodule Revoluchat.Chat do
       from(m in Message,
         where: m.app_id == ^app_id,
         where: m.conversation_id == ^conversation_id,
-        where: is_nil(m.deleted_at),
         order_by: [desc: m.inserted_at],
         limit: ^limit,
         preload: [:attachment]
@@ -176,6 +175,17 @@ defmodule Revoluchat.Chat do
 
         from(m in query,
           where: m.inserted_at < ^cursor_time
+        )
+      else
+        query
+      end
+
+    query =
+      if search_term = Keyword.get(opts, :search) do
+        search_pattern = "%#{search_term}%"
+
+        from(m in query,
+          where: ilike(m.body, ^search_pattern)
         )
       else
         query
@@ -225,17 +235,24 @@ defmodule Revoluchat.Chat do
   def create_attachment_init(attrs) do
     uuid = Ecto.UUID.generate()
     filename = attrs["filename"] || "unnamed"
-    ext = Path.extname(filename)
+    clean_filename = sanitize_filename(filename)
+    ext = Path.extname(clean_filename)
     mime_type = attrs["mime_type"]
     category = get_category_from_mime(mime_type)
     date = Date.to_string(Date.utc_today())
     
-    storage_key = "attachments/#{category}/#{date}/#{uuid}#{ext}"
+    storage_key = "revoluchat/attachments/#{category}/#{date}/#{uuid}#{ext}"
+
+    # Store sanitized filename in metadata
+    metadata = 
+      (attrs["metadata"] || %{})
+      |> Map.put("filename", clean_filename)
 
     params =
       Map.merge(attrs, %{
         "storage_key" => storage_key,
-        "status" => "pending"
+        "status" => "pending",
+        "metadata" => metadata
       })
 
     changeset = Attachment.changeset(%Attachment{}, params)
@@ -252,14 +269,19 @@ defmodule Revoluchat.Chat do
     end
   end
 
-  defp get_category_from_mime(nil), do: "files"
+  defp get_category_from_mime(nil), do: "documents"
   defp get_category_from_mime(mime) do
     cond do
       String.starts_with?(mime, "image/") -> "images"
       String.starts_with?(mime, "audio/") or mime == "application/ogg" -> "audio"
       String.starts_with?(mime, "video/") -> "video"
-      true -> "files"
+      true -> "documents"
     end
+  end
+
+  defp sanitize_filename(filename) do
+    filename
+    |> String.replace(~r/[^a-zA-Z0-9.-]/, "_")
   end
 
   @doc """

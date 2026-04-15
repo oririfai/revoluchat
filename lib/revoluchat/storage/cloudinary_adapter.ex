@@ -17,26 +17,34 @@ defmodule Revoluchat.Storage.CloudinaryAdapter do
     # 1. Generate Timestamp
     timestamp = DateTime.utc_now() |> DateTime.to_unix() |> to_string()
 
-    # 2. SYNC PUBLIC_ID (STRIP EXTENSION)
-    # Cloudinary public_id should not contain the extension (.jpg, .png etc)
-    # or it will double-extension the final URL (image.jpg.jpg)
-    public_id = key |> Path.rootname()
+    # 2. Split key into folder + public_id (filename without extension)
+    # This is the correct Cloudinary approach — folder defines the path,
+    # public_id is just the unique file identifier (UUID, no extension).
+    # Example key: "revoluchat/attachments/images/2024-04-08/uuid.jpg"
+    # → folder: "revoluchat/attachments/images/2024-04-08"
+    # → public_id: "uuid" (just the UUID, no folder, no extension)
+    basename = Path.basename(key)                        # "uuid.jpg"
+    file_id  = Path.rootname(basename)                   # "uuid"
+    folder   = Path.dirname(key)                         # "revoluchat/attachments/images/2024-04-08"
 
-    # Alphabetical order: public_id (P) before timestamp (T).
-    string_to_sign = "public_id=#{public_id}&timestamp=#{timestamp}#{api_secret}"
+    # 3. Alphabetical param order for signature: folder(F), public_id(P), timestamp(T)
+    string_to_sign = "folder=#{folder}&public_id=#{file_id}&timestamp=#{timestamp}#{api_secret}"
     
-    # 3. Calculate SHA1 Signature
+    # 4. Calculate SHA1 Signature
     signature = :crypto.hash(:sha, string_to_sign) |> Base.encode16() |> String.downcase()
 
-    # 4. Final fields to send to Mobile
+    # 5. Final fields to send to Mobile
     fields = %{
-      "timestamp" => timestamp,
-      "api_key" => api_key,
-      "signature" => signature,
-      "public_id" => public_id
+      "timestamp"  => timestamp,
+      "api_key"    => api_key,
+      "signature"  => signature,
+      "public_id"  => file_id,
+      "folder"     => folder
     }
 
     upload_url = "https://api.cloudinary.com/v1_1/#{cloud_name}/auto/upload"
+
+    Logger.info("[Cloudinary] Presigned upload → folder: #{folder}, public_id: #{file_id}")
 
     {:ok, %{
       upload_url: upload_url,
@@ -50,14 +58,23 @@ defmodule Revoluchat.Storage.CloudinaryAdapter do
     config = Application.get_env(:revoluchat, :storage, [])
     cloud_name = config[:cloud_name]
     
-    # Cloudinary expects the public_id (no ext) followed by the format extension
-    public_id = key |> Path.rootname()
-    ext = key |> Path.extname() |> String.trim_leading(".")
+    # Reconstruct consistent with how we upload:
+    # folder = directory path, file_id = UUID (no ext), format = extension
+    basename    = Path.basename(key)                        # "uuid.jpg"
+    file_id     = Path.rootname(basename)                   # "uuid"
+    folder      = Path.dirname(key)                         # "revoluchat/attachments/images/date"
+    ext         = key |> Path.extname() |> String.trim_leading(".")
     
-    # Default to jpg if no extension found
-    format = if ext == "", do: "jpg", else: ext
-    
-    url = "https://res.cloudinary.com/#{cloud_name}/image/upload/#{public_id}.#{format}"
+    # Determine resource_type based on folder category in the key
+    resource_type = cond do
+      String.contains?(key, "/images/") -> "image"
+      String.contains?(key, "/video/")  -> "video"
+      true                              -> "raw"   # documents, audio, other files
+    end
+
+    # Cloudinary URL: {resource_type}/upload/{folder}/{file_id}.{ext}
+    format = if ext == "", do: "bin", else: ext
+    url = "https://res.cloudinary.com/#{cloud_name}/#{resource_type}/upload/#{folder}/#{file_id}.#{format}"
     {:ok, url}
   end
 

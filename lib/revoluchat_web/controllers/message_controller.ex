@@ -10,10 +10,11 @@ defmodule RevoluchatWeb.MessageController do
     user_id = conn.assigns.current_user_id
     app_id = conn.assigns.current_app_id
     before_id = Map.get(params, "before_id")
+    search = Map.get(params, "search")
     limit = min(Map.get(params, "limit", "50") |> String.to_integer(), 100)
 
     with {:ok, _conv} <- Chat.get_conversation_for_user(app_id, conv_id, user_id) do
-      messages = Chat.list_messages(app_id, conv_id, limit: limit, before_id: before_id)
+      messages = Chat.list_messages(app_id, conv_id, limit: limit, before_id: before_id, search: search)
 
       # Fetch user details (senders) from local cache
       sender_ids = messages |> Enum.map(& &1.sender_id) |> Enum.uniq()
@@ -77,11 +78,31 @@ defmodule RevoluchatWeb.MessageController do
       user: Map.get(users_map, m.sender_id) |> format_user(),
       conversation_id: m.conversation_id,
       attachment_id: m.attachment_id,
+      attachment: format_attachment(m.attachment),
       reply_to_id: m.reply_to_id,
       client_id: m.client_id,
       delivered_at: format_dt(m.delivered_at),
       read_at: format_dt(m.read_at),
       inserted_at: format_dt(m.inserted_at)
+    }
+  end
+
+  defp format_attachment(%Ecto.Association.NotLoaded{}), do: nil
+  defp format_attachment(nil), do: nil
+
+  defp format_attachment(att) do
+    url =
+      case Revoluchat.Storage.presigned_get_url(att.storage_key) do
+        {:ok, url} -> url
+        _ -> nil
+      end
+
+    %{
+      id: att.id,
+      url: url,
+      mime_type: att.mime_type,
+      size: att.size,
+      metadata: att.metadata
     }
   end
 
