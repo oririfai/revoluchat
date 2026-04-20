@@ -81,8 +81,10 @@ defmodule RevoluchatWeb.Router do
 
     # Attachments
     post("/attachments/init", AttachmentController, :init)
+    put("/attachments/:id/upload", AttachmentController, :upload)
     post("/attachments/:id/confirm", AttachmentController, :confirm)
     get("/attachments/:id/download", AttachmentController, :download)
+    get("/attachments/:id/show", AttachmentController, :show)
 
     # Analytics / Admin Dashboard
     get("/analytics/active_connections", AnalyticsController, :active_connections)
@@ -94,6 +96,7 @@ defmodule RevoluchatWeb.Router do
 
     # Call History
     get("/calls/history", CallController, :history)
+    delete("/calls/history", CallController, :delete_history)
   end
 
   scope "/api/v1", RevoluchatWeb do

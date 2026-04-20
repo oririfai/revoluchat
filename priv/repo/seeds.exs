@@ -48,3 +48,21 @@ unless Repo.get_by(Admin, email: admin_email) do
 
   IO.puts("✅ Created NEW default admin: #{admin_email} / #{admin_password}")
 end
+# 4. Default API Key for Android SDK Testing
+alias Revoluchat.Accounts.ApiKey
+
+default_key = "9gwMoz5a3gBMLbBTo2t6hYB8zlMW3bAN28iH9eEti_c="
+default_app_id = "revolu-corp"
+
+unless Repo.get_by(ApiKey, key: default_key) do
+  %ApiKey{}
+  |> ApiKey.changeset(%{
+    name: "Android Debug Key",
+    key: default_key,
+    app_id: default_app_id,
+    status: "active"
+  })
+  |> Repo.insert!()
+
+  IO.puts("✅ Created DEFAULT API KEY for Android SDK.")
+end

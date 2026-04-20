@@ -5,7 +5,7 @@ defmodule Revoluchat.Accounts do
   dan cek user exist via gRPC call ke User Service.
   """
 
-  alias Revoluchat.Accounts.{Token, ApiKey, ServerKey, User, UserChat, Contact}
+  alias Revoluchat.Accounts.{Token, ApiKey, ServerKey, UserChat, Contact}
   alias Revoluchat.Grpc.UserClient
   alias Revoluchat.Repo
   import Ecto.Query

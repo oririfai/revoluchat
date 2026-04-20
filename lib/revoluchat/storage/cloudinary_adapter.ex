@@ -79,6 +79,11 @@ defmodule Revoluchat.Storage.CloudinaryAdapter do
   end
 
   @impl true
+  def get_object(_key) do
+    {:error, :not_implemented_for_cloudinary}
+  end
+
+  @impl true
   def verify_upload(_key) do
     {:ok, true}
   end
@@ -86,5 +91,12 @@ defmodule Revoluchat.Storage.CloudinaryAdapter do
   @impl true
   def head_object(key) do
     {:ok, %{key: key}}
+  end
+  
+  @impl true
+  def upload_binary(_key, _binary_data, _content_type) do
+    # Proxy upload is meant for R2 signature bug workarounds. 
+    # Cloudinary presigned upload from Mobile works fine directly.
+    {:error, :not_implemented_for_cloudinary}
   end
 end

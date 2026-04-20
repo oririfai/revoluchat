@@ -105,6 +105,7 @@ defmodule RevoluchatWeb.ConversationController do
       id: m.id,
       body: m.body,
       type: m.type,
+      deleted_at: m.deleted_at,
       inserted_at: m.inserted_at
     }
   end

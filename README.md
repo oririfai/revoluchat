@@ -113,25 +113,42 @@ service ConversationService {
 
 ---
 
-## 📞 WebRTC Signaling & TURN Relays
+## 📞 LiveKit WebRTC SFU Integration
 
-Revoluchat handles the absolute hardest part of WebRTC **Signaling** (SDP Offers/Answers and ICE Candidate exchanging) out of the box using lightning-fast Phoenix `UserChannel` routing.
+Revoluchat has migrated from a legacy Peer-to-Peer (P2P) signaling routing model to a highly scalable **LiveKit Selective Forwarding Unit (SFU)** architecture. The Phoenix Backend acts solely as a secure **Token Authorizer** and **Call Orchestrator**, while offloading heavy audio/video media routing to the LiveKit server.
 
 ### Architecture Scope
-- **Signaling Layer (Backend)**: Revoluchat acts as the Signaling Server, effortlessly capable of handling millions of concurrent signaling handshakes with sub-millisecond latencies using the Erlang VM.
-- **Media Layer (External)**: Revoluchat **does not route heavy audio or video streams** to keep the core server incredibly fast and cheap to scale. All media is sent Peer-to-Peer (P2P) directly between clients.
+- **Orchestration Layer (Phoenix Backend)**: Handles the initial `call:request`, `call:respond`, and `call:accepted` events over ultra-fast Phoenix Sockets. It dynamically generates robust `LiveKit JWT Tokens` for both callers and receivers upon a successful call handshake.
+- **Media Layer (LiveKit SFU)**: Client SDKs connect directly to LiveKit using the securely injected WebSocket payload `livekit_url` and JWT tokens, enabling massive multi-party scale.
 
-### ⚠️ IMPORTANT: Production TURN Server
-Because Revoluchat relies on P2P media connections, you **MUST** configure a fallback **TURN Server** in your environment variables. 
-Without a TURN server, clients on strict networks (LTE/CGNAT or Symmetric NAT) will experience `ICE failed` states.
-
-Set the `ICE_SERVERS` environment variable with a JSON array of your STUN/TURN configurations:
+### ⚙️ Server Configuration
+You must have a LiveKit server running alongside your Elixir deployment. Update your `.env` with the LiveKit server credentials:
 
 ```bash
-ICE_SERVERS='[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:my-turn.com","username":"user","credential":"pass"}]'
+LIVEKIT_URL=http://localhost:7880
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=secret
 ```
 
-Revoluchat serves this configuration dynamically to all SDK clients via the `/api/v1/rtc_config` endpoint. 
+### 📡 Android Mobile Local Development (Emulator Guide)
+
+When developing Native Mobile SDKs, the Android Emulator treats `localhost` as *itself*, which breaks LiveKit WebRTC handshakes if the server points clients to `127.0.0.1`.
+
+**The Solution**: Bind LiveKit and the Elixir Backend to your **Physical Wi-Fi/LAN IP Address** (e.g., `192.168.x.x`).
+
+1. In the Elixir `.env` file, update the URL:
+   ```env
+   LIVEKIT_URL=http://192.168.x.x:7880
+   ```
+2. In your LiveKit Server's `livekit.yaml`, explicitly set the Node IP:
+   ```yaml
+   rtc:
+     tcp_port: 7881
+     node_ip: '192.168.x.x' # <~ Your Physical Machine's WiFi IP address
+     use_external_ip: false
+   ```
+
+Restart both `livekit-server` and `revoluchat` docker containers. This guarantees that Android Emulators and physical phones on your local Wi-Fi will connect successfully to the WebRTC ICE streams without hitting IP resolution walls.
 
 ---
 
@@ -159,6 +176,13 @@ Revoluchat serves this configuration dynamically to all SDK clients via the `/ap
 | `mix test`           | Run the test suite.                   |
 | `mix ecto.migrate`   | Apply database migrations.            |
 | `mix phx.gen.secret` | Generate a new `SECRET_KEY_BASE`.     |
+
+## 🗺️ API Feature Highlights
+
+### Call History Filtering
+The `GET /api/v1/calls/history` endpoint now supports an optional `contact_id` query parameter. 
+- **Usage**: `GET /api/v1/calls/history?contact_id=123`
+- **Behavior**: Returns only the call history between the authenticated user and the specified contact.
 
 ## 📄 License
 

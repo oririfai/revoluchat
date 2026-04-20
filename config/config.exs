@@ -78,7 +78,6 @@ config :ex_aws,
   region: System.get_env("AWS_REGION", "us-east-1")
 
 config :revoluchat, :storage,
-  bucket: System.get_env("STORAGE_BUCKET", "revoluchat"),
   presigned_url_expiry: 3600
 
 # ─── Rate Limiting (Hammer) ──────────────────────────────────────────────────

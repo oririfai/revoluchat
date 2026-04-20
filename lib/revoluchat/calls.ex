@@ -102,7 +102,7 @@ defmodule Revoluchat.Calls do
         else
           # Only allow answering if dialed or ringing
           if call.status in ["dialing", "ringing"] do
-            update_call(call, %{status: "connected"})
+            update_call(call, %{status: "connected", started_at: DateTime.utc_now()})
           else
             Logger.warning("Calls: Attempted to accept call #{call_id} in invalid state: #{call.status}")
             {:error, :invalid_status}
@@ -208,13 +208,23 @@ defmodule Revoluchat.Calls do
   List call history for a specific user.
   Includes the "other party" identity for re-calling.
   """
-  def list_call_history(app_id, user_id, limit \\ 50) do
+  def list_call_history(app_id, user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    other_party_id = Keyword.get(opts, :other_party_id)
+
     query =
       from(ch in CallHistory,
         where: ch.app_id == ^app_id and ch.user_id == ^user_id,
         order_by: [desc: ch.inserted_at],
         limit: ^limit
       )
+
+    query =
+      if other_party_id do
+        from(ch in query, where: ch.other_party_id == ^other_party_id)
+      else
+        query
+      end
 
     history_records = Repo.all(query)
     other_party_ids = Enum.map(history_records, & &1.other_party_id) |> Enum.uniq()
@@ -231,6 +241,42 @@ defmodule Revoluchat.Calls do
         other_party_phone: (other && other.phone)
       })
     end)
+  end
+
+  @doc """
+  Deletes specific call history records for a user.
+  """
+  def delete_call_history(app_id, user_id, ids) when is_list(ids) do
+    require Logger
+    Logger.info("Calls: Deleting call history for user #{user_id} (App: #{app_id}). Count: #{length(ids)}")
+
+    # Ensure IDs are valid UUIDs and cast them for the query
+    valid_ids = 
+      ids 
+      |> Enum.map(fn id -> 
+        case Ecto.UUID.cast(id) do
+          {:ok, uuid} -> uuid
+          _ -> 
+            Logger.warning("Calls: Invalid UUID string received: #{inspect(id)}")
+            nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if Enum.empty?(valid_ids) do
+      Logger.warning("Calls: No valid UUIDs to delete.")
+      {0, nil}
+    else
+      # Final security check: Ensure we are only deleting records belonging to the requester
+      query =
+        from(ch in CallHistory,
+          where: ch.app_id == ^app_id and ch.user_id == ^user_id and ch.id in ^valid_ids
+        )
+
+      {count, result} = Repo.delete_all(query)
+      Logger.info("Calls: Successfully deleted #{count} records from database.")
+      {count, result}
+    end
   end
 
   # ─── PRIVATE HELPERS ─────────────────────────────────────────────────────────

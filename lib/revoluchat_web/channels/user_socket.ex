@@ -21,9 +21,14 @@ defmodule RevoluchatWeb.UserSocket do
       
       # ENSURE user_id is integer for standard DB compatibility if it's numeric
       user_id =
-        if is_binary(user_id) and Regex.match?(~r/^\d+$/, user_id),
-          do: String.to_integer(user_id),
-          else: user_id
+        cond do
+          is_integer(user_id) -> user_id
+          is_binary(user_id) and Regex.match?(~r/^\d+$/, user_id) -> String.to_integer(user_id)
+          is_binary(user_id) and Regex.match?(~r/^\d+\.0$/, user_id) -> 
+            user_id |> String.replace(".0", "") |> String.to_integer()
+          is_float(user_id) -> trunc(user_id)
+          true -> user_id
+        end
 
       # AUTOMATIC REGISTRATION: 
       # Inisialisasi data pengguna dan registrasikan ke tabel user_chats jika belum ada

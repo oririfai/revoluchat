@@ -8,7 +8,7 @@ defmodule Revoluchat.Workers.AttachmentScanWorker do
   alias Revoluchat.Chat.Attachment
   alias ExAws.S3
 
-  @bucket Application.compile_env(:revoluchat, [:storage, :bucket], "revoluchat")
+  # @bucket removed in favor of runtime bucket() helper
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"attachment_id" => id}}) do
@@ -25,7 +25,7 @@ defmodule Revoluchat.Workers.AttachmentScanWorker do
         |> Attachment.changeset(%{status: "rejected"})
         |> Repo.update!()
 
-        S3.delete_object(@bucket, attachment.storage_key)
+        S3.delete_object(bucket(), attachment.storage_key)
         |> ExAws.request()
 
         :ok
@@ -40,5 +40,8 @@ defmodule Revoluchat.Workers.AttachmentScanWorker do
     else
       :clean
     end
+  end
+  defp bucket do
+    Application.get_env(:revoluchat, :storage)[:bucket] || "revoluchat"
   end
 end

@@ -22,6 +22,7 @@ defmodule Revoluchat.Chat.Message do
 
     field(:status, :string, virtual: true, default: "sent")
     field(:metadata, :map)
+    field(:attachment_ids, {:array, :binary_id}, default: [])
 
     belongs_to(:conversation, Revoluchat.Chat.Conversation)
     belongs_to(:attachment, Revoluchat.Chat.Attachment)
@@ -42,6 +43,7 @@ defmodule Revoluchat.Chat.Message do
       :sender_id,
       :conversation_id,
       :attachment_id,
+      :attachment_ids,
       :reply_to_id
     ])
     |> validate_required([:app_id, :type, :conversation_id, :sender_id])
@@ -75,13 +77,14 @@ defmodule Revoluchat.Chat.Message do
     type = get_field(changeset, :type)
     body = get_field(changeset, :body)
     attachment_id = get_field(changeset, :attachment_id)
+    attachment_ids = get_field(changeset, :attachment_ids)
 
     cond do
       type == "text" && (is_nil(body) || String.trim(body) == "") ->
         add_error(changeset, :body, "wajib diisi untuk tipe text")
 
-      type == "attachment" && is_nil(attachment_id) ->
-        add_error(changeset, :attachment_id, "wajib diisi untuk tipe attachment")
+      type == "attachment" && is_nil(attachment_id) && (is_nil(attachment_ids) || attachment_ids == []) ->
+        add_error(changeset, :attachment_id, "wajib diisi untuk tipe attachment (singular atau plural)")
 
       type == "system_call_summary" ->
         changeset

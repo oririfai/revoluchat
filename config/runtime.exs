@@ -49,67 +49,98 @@ if ice_servers_json = System.get_env("ICE_SERVERS") do
   end
 end
 
-# ─── Object Storage (MinIO / Cloudinary) Config ──────────────────────────────
-storage_provider = System.get_env("STORAGE_PROVIDER") || "s3"
+# ─── LiveKit Server Config ────────────────────────────────────────────────────
+config :revoluchat, :livekit,
+  url: System.get_env("LIVEKIT_URL") || "http://localhost:7880",
+  api_key: System.get_env("LIVEKIT_API_KEY") || "devkey",
+  api_secret: System.get_env("LIVEKIT_API_SECRET") || "secret"
 
-if storage_provider == "s3" and System.get_env("AWS_ACCESS_KEY_ID") do
-  minio_host = System.get_env("MINIO_HOST") || "minio"
-  minio_public_host = System.get_env("MINIO_PUBLIC_HOST") || minio_host
-  minio_port = String.to_integer(System.get_env("MINIO_PORT") || "9000")
+# ─── Object Storage Config (minio, cloudflareR2, cloudinary) ──────────────────
+storage_mode = System.get_env("STORAGE_ADAPTOR_MODE") || "minio"
 
-  config :ex_aws,
-    access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
-    secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
-    region: System.get_env("AWS_REGION") || "us-east-1",
-    s3: [
-      scheme: "http://",
-      host: minio_host,
-      port: minio_port
-    ]
+case storage_mode do
+  "minio" ->
+    minio_host = System.get_env("MINIO_HOST") || "minio"
+    minio_public_host = System.get_env("MINIO_PUBLIC_HOST") || minio_host
+    minio_port = String.to_integer(System.get_env("MINIO_PORT") || "9000")
 
-  config :revoluchat, :storage,
-    provider: :s3,
-    bucket: System.get_env("STORAGE_BUCKET") || "revoluchat",
-    presigned_url_expiry: 3600,
-    public_host: minio_public_host
-end
+    config :ex_aws,
+      access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+      secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
+      region: System.get_env("AWS_REGION") || "us-east-1",
+      s3: [
+        scheme: "http://",
+        host: minio_host,
+        port: minio_port
+      ]
 
-if storage_provider == "cloudinary" do
-  cloudinary_url = System.get_env("CLOUDINARY_URL")
+    config :revoluchat, :storage,
+      provider: :s3,
+      bucket: System.get_env("STORAGE_BUCKET") || "revoluchat",
+      presigned_url_expiry: 3600,
+      public_host: minio_public_host
 
-  config_data =
-    if cloudinary_url && String.starts_with?(cloudinary_url, "cloudinary://") do
-      uri = URI.parse(cloudinary_url)
-      [api_key, api_secret] = String.split(uri.userinfo || ":", ":")
+  "cloudflareR2" ->
+    account_id = System.get_env("R2_ACCOUNT_ID")
 
-      %{
-        cloud_name: uri.host,
-        api_key: api_key,
-        api_secret: api_secret
-      }
+    config :ex_aws,
+      access_key_id: System.get_env("R2_ACCESS_KEY_ID"),
+      secret_access_key: System.get_env("R2_SECRET_ACCESS_KEY"),
+      region: "auto",
+      s3: [
+        scheme: "https://",
+        host: "#{account_id}.r2.cloudflarestorage.com",
+        port: 443
+      ]
+
+    config :revoluchat, :storage,
+      provider: :r2,
+      bucket: System.get_env("R2_BUCKET"),
+      presigned_url_expiry: 3600,
+      public_host: System.get_env("R2_PUBLIC_DOMAIN") || "#{account_id}.r2.cloudflarestorage.com"
+
+  "cloudinary" ->
+    cloudinary_url = System.get_env("CLOUDINARY_URL")
+
+    config_data =
+      if cloudinary_url && String.starts_with?(cloudinary_url, "cloudinary://") do
+        uri = URI.parse(cloudinary_url)
+        [api_key, api_secret] = String.split(uri.userinfo || ":", ":")
+
+        %{
+          cloud_name: uri.host,
+          api_key: api_key,
+          api_secret: api_secret
+        }
+      else
+        %{
+          cloud_name: System.get_env("CLOUDINARY_CLOUD_NAME"),
+          api_key: System.get_env("CLOUDINARY_API_KEY"),
+          api_secret: System.get_env("CLOUDINARY_API_SECRET")
+        }
+      end
+
+    if config_data.cloud_name && config_data.api_key && config_data.api_secret do
+      config :revoluchat, :storage,
+        provider: :cloudinary,
+        cloud_name: config_data.cloud_name,
+        api_key: config_data.api_key,
+        api_secret: config_data.api_secret
+
+      config :cloudinex,
+        api_key: config_data.api_key,
+        secret: config_data.api_secret,
+        cloud_name: config_data.cloud_name
     else
-      %{
-        cloud_name: System.get_env("CLOUDINARY_CLOUD_NAME"),
-        api_key: System.get_env("CLOUDINARY_API_KEY"),
-        api_secret: System.get_env("CLOUDINARY_API_SECRET")
-      }
+      # Fallback to empty if not fully configured, though the adapter should handle nil
+      config :revoluchat, :storage, provider: :cloudinary
     end
 
-  if config_data.cloud_name && config_data.api_key && config_data.api_secret do
-    config :revoluchat, :storage,
-      provider: :cloudinary,
-      cloud_name: config_data.cloud_name,
-      api_key: config_data.api_key,
-      api_secret: config_data.api_secret
-
-    config :cloudinex,
-      api_key: config_data.api_key,
-      secret: config_data.api_secret,
-      cloud_name: config_data.cloud_name
-  else
-    # Fallback to empty if not fully configured, though the adapter should handle nil
-    config :revoluchat, :storage, provider: :cloudinary
-  end
+  mode ->
+    # Fallback/Warning for invalid mode
+    if config_env() != :test do
+      IO.warn("Unsupported STORAGE_ADAPTOR_MODE: #{inspect(mode)}. Storage might not function correctly.")
+    end
 end
 
 if config_env() == :prod do

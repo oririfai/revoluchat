@@ -14,13 +14,24 @@ defmodule RevoluchatWeb.AttachmentJSON do
       expires_in: 3600
     }
 
-    data = 
+    data =
       if is_map(upload_data) do
-        Map.merge(base, %{
-          upload_url: upload_data.upload_url,
-          upload_method: upload_data.method,
-          upload_params: upload_data[:fields]
-        })
+        if upload_data[:proxy] do
+          # Build a relative path. The Android client will securely prefix this with its own baseUrl.
+          url = "/api/v1/attachments/#{attachment.id}/upload"
+          Map.merge(base, %{
+            upload_url: url,
+            upload_method: "PUT"
+          })
+        else
+          Map.merge(base, %{
+            upload_url: upload_data.upload_url,
+            upload_method: upload_data.method,
+            upload_params: upload_data[:fields],
+            amz_date: upload_data[:amz_date],
+            amz_content_sha256: upload_data[:amz_content_sha256]
+          })
+        end
       else
         Map.merge(base, %{upload_url: upload_data})
       end

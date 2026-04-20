@@ -4,6 +4,7 @@ defmodule Revoluchat.Chat do
   """
 
   import Ecto.Query
+  require Logger
   alias Revoluchat.Repo
   alias Revoluchat.Chat.{Conversation, Message, Attachment}
   alias Revoluchat.Storage
@@ -79,7 +80,6 @@ defmodule Revoluchat.Chat do
         where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
       )
 
-
     query =
       if search_term && search_term != "" do
         search_pattern = "%#{search_term}%"
@@ -120,8 +120,18 @@ defmodule Revoluchat.Chat do
         # Update last_activity di conversation
         update_conversation_activity(attrs.conversation_id, message.id)
 
-        # Preload attachment agar tidak crash saat diformat
+        # Preload attachments (both legacy singular and new plural)
         message = Repo.preload(message, :attachment)
+
+        attachments =
+          if message.attachment_ids && message.attachment_ids != [] do
+            Logger.debug("Chat: Fetching attachments for IDs: #{inspect(message.attachment_ids)}")
+            Repo.all(from(a in Attachment, where: a.id in ^message.attachment_ids))
+          else
+            if message.attachment, do: [message.attachment], else: []
+          end
+
+        Logger.debug("Chat: Total attachments found: #{length(attachments)}")
 
         # Enqueue Webhook for incoming message (B2B SDK feature)
         %{
@@ -131,22 +141,31 @@ defmodule Revoluchat.Chat do
             "conversation_id" => message.conversation_id,
             "sender_id" => message.sender_id,
             "body" => message.body,
-            "type" => message.type
+            "type" => message.type,
+            "attachment_ids" => message.attachment_ids
           }
         }
         |> Revoluchat.Workers.WebhookDispatcher.new()
         |> Oban.insert()
 
-        {:ok, message}
+        {:ok, message, attachments}
 
       {:error, %Ecto.Changeset{errors: [client_id: _]} = _changeset} ->
-        # Idempotent: client_id sudah ada, kembalikan message yang ada
         existing =
-          Repo.get_by!(Message, client_id: attrs[:client_id]) |> Repo.preload(:attachment)
+          Repo.get_by!(Message, client_id: attrs[:client_id])
+          |> Repo.preload(:attachment)
 
-        {:ok, existing}
+        attachments =
+          if existing.attachment_ids && existing.attachment_ids != [] do
+            Repo.all(from(a in Attachment, where: a.id in ^existing.attachment_ids))
+          else
+            if existing.attachment, do: [existing.attachment], else: []
+          end
+
+        {:ok, existing, attachments}
 
       {:error, changeset} ->
+        Logger.error("Chat: Message insertion failed. Errors: #{inspect(changeset.errors)}")
         {:error, changeset}
     end
   end
@@ -215,10 +234,13 @@ defmodule Revoluchat.Chat do
   end
 
   def soft_delete_message(app_id, message_id, user_id) do
+    Logger.debug("Chat: Searching for message #{message_id} for User #{user_id}")
     with {:ok, message} <- get_message_for_user(app_id, message_id, user_id) do
-      if message.sender_id != user_id do
+      Logger.debug("Chat: Found message #{message_id}, checking ownership: sender_id=#{message.sender_id} vs user_id=#{user_id}")
+      if to_string(message.sender_id) != to_string(user_id) do
         {:error, :unauthorized}
       else
+        Logger.debug("Chat: Ownership confirmed, executing soft delete for message #{message_id}")
         message
         |> Message.soft_delete_changeset()
         |> Repo.update()
@@ -226,7 +248,25 @@ defmodule Revoluchat.Chat do
     end
   end
 
+  def soft_delete_messages(app_id, message_ids, user_id) do
+    now = DateTime.utc_now()
+    
+    query = from(m in Message,
+      where: m.app_id == ^app_id,
+      where: m.id in ^message_ids,
+      where: m.sender_id == ^user_id
+    )
+    
+    Repo.update_all(query, set: [deleted_at: now, updated_at: now])
+    |> case do
+      {count, _} -> {:ok, count}
+      _ -> {:error, :failed}
+    end
+  end
+
   # ─── Attachments ──────────────────────────────────────────────────────────────
+
+  def get_attachment!(id), do: Repo.get!(Attachment, id)
 
   @doc """
   Initiate upload: Create pending attachment record & generate presigned URL.
@@ -240,11 +280,11 @@ defmodule Revoluchat.Chat do
     mime_type = attrs["mime_type"]
     category = get_category_from_mime(mime_type)
     date = Date.to_string(Date.utc_today())
-    
+
     storage_key = "revoluchat/attachments/#{category}/#{date}/#{uuid}#{ext}"
 
     # Store sanitized filename in metadata
-    metadata = 
+    metadata =
       (attrs["metadata"] || %{})
       |> Map.put("filename", clean_filename)
 
@@ -270,6 +310,7 @@ defmodule Revoluchat.Chat do
   end
 
   defp get_category_from_mime(nil), do: "documents"
+
   defp get_category_from_mime(mime) do
     cond do
       String.starts_with?(mime, "image/") -> "images"
@@ -351,7 +392,7 @@ defmodule Revoluchat.Chat do
     end
   end
 
-  defp get_approved_attachment_for_user(app_id, attachment_id, user_id) do
+  def get_approved_attachment_for_user(app_id, attachment_id, user_id) do
     # 1. Check if uploader
     case Repo.get_by(Attachment, id: attachment_id, app_id: app_id, status: "approved") do
       %Attachment{uploader_id: ^user_id} = att ->
@@ -363,7 +404,7 @@ defmodule Revoluchat.Chat do
           from(m in Message,
             join: c in Conversation,
             on: m.conversation_id == c.id,
-            where: m.attachment_id == ^attachment_id,
+            where: m.attachment_id == ^attachment_id or ^attachment_id in m.attachment_ids,
             where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
           )
           |> Repo.exists?()
@@ -375,13 +416,14 @@ defmodule Revoluchat.Chat do
     end
   end
 
-  defp get_approved_attachment(id) do
-    case Repo.get(Attachment, id) do
-      nil -> {:error, :not_found}
-      %Attachment{status: "approved"} = att -> {:ok, att}
-      _ -> {:error, :not_found}
-    end
-  end
+  # (unused)
+  # defp get_approved_attachment(id) do
+  #   case Repo.get(Attachment, id) do
+  #     nil -> {:error, :not_found}
+  #     %Attachment{status: "approved"} = att -> {:ok, att}
+  #     _ -> {:error, :not_found}
+  #   end
+  # end
 
   defp update_conversation_activity(conversation_id, message_id) do
     now = DateTime.utc_now()

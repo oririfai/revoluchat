@@ -18,12 +18,26 @@ defmodule Revoluchat.Storage do
       error -> error
     end
   end
+  
+  @doc """
+  Directly upload binary data to storage.
+  """
+  def upload_binary(key, binary_data, content_type) do
+    adapter().upload_binary(key, binary_data, content_type)
+  end
 
   @doc """
   Generate download URL for a file.
   """
   def presigned_get_url(key, opts \\ []) do
     adapter().presigned_get_url(key, opts)
+  end
+
+  @doc """
+  Fetch binary data from storage.
+  """
+  def get_object(key) do
+    adapter().get_object(key)
   end
 
   @doc """
@@ -37,6 +51,7 @@ defmodule Revoluchat.Storage do
     config = Application.get_env(:revoluchat, :storage)
     case config[:provider] do
       :cloudinary -> Revoluchat.Storage.CloudinaryAdapter
+      :r2 -> Revoluchat.Storage.R2Adapter
       _ -> Revoluchat.Storage.S3Adapter
     end
   end
