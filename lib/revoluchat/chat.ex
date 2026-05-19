@@ -1,451 +1,102 @@
 defmodule Revoluchat.Chat do
   @moduledoc """
-  Context untuk conversation dan message management.
+  Context for conversation and message management.
+  Acts as a dispatcher between Postgres and gRPC storage adapters.
   """
-
-  import Ecto.Query
   require Logger
-  alias Revoluchat.Repo
-  alias Revoluchat.Chat.{Conversation, Message, Attachment}
-  alias Revoluchat.Storage
+
+  @doc """
+  Returns the active storage adapter based on TIER_TYPE.
+  """
+  def adapter do
+    tier = Application.get_env(:revoluchat, :tier_type)
+    Logger.info("[Chat] Active Tier: #{tier}")
+    case tier do
+      "advance" -> Revoluchat.Chat.Adapters.Grpc
+      _ -> Revoluchat.Chat.Adapters.Postgres
+    end
+  end
 
   # ─── Conversations ────────────────────────────────────────────────────────────
 
-  @doc """
-  Buat atau ambil conversation antara dua user di sebuah aplikasi tertentu.
-  user_a_id < user_b_id selalu (deterministic ordering).
-  """
-  def get_or_create_conversation(app_id, user_a_id, user_b_id) do
-    # Enforce ordering: a < b
-    {a, b} =
-      if user_a_id < user_b_id,
-        do: {user_a_id, user_b_id},
-        else: {user_b_id, user_a_id}
-
-    case Repo.get_by(Conversation, app_id: app_id, user_a_id: a, user_b_id: b) do
-      nil ->
-        %Conversation{}
-        |> Conversation.changeset(%{app_id: app_id, user_a_id: a, user_b_id: b})
-        |> Repo.insert()
-        |> case do
-          {:ok, conv} -> {:ok, Repo.preload(conv, :last_message)}
-          error -> error
-        end
-
-      conversation ->
-        {:ok, Repo.preload(conversation, :last_message)}
-    end
-  end
-
-  @doc """
-  Ambil conversation hanya jika user adalah member.
-  Dipakai di Channel join untuk authorization.
-  """
-  def get_conversation_for_user(app_id, conversation_id, user_id) do
-    query =
-      from(c in Conversation,
-        where: c.app_id == ^app_id,
-        where: c.id == ^conversation_id,
-        where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
-      )
-
-    query
-    |> preload(:last_message)
-    |> Repo.one()
-    |> case do
-      nil ->
-        {:error, :not_found}
-
-      conv ->
-        {:ok, conv}
-    end
-  end
-
-  def list_user_conversations(app_id, user_id, opts \\ []) do
-    search_term = Keyword.get(opts, :search)
-
-    # Subquery for unread messages count
-    unread_query =
-      from(m in Message,
-        where: m.conversation_id == parent_as(:conversation).id,
-        where: m.sender_id != ^user_id,
-        where: is_nil(m.read_at),
-        select: count(m.id)
-      )
-
-    query =
-      from(c in Conversation,
-        as: :conversation,
-        where: c.app_id == ^app_id,
-        where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
-      )
-
-    query =
-      if search_term && search_term != "" do
-        search_pattern = "%#{search_term}%"
-
-        from(c in query,
-          left_join: m in Message,
-          on: m.conversation_id == c.id,
-          where: ilike(m.body, ^search_pattern),
-          distinct: true
-        )
-      else
-        query
-      end
-
-    conversations =
-      query
-      |> order_by([c], desc: c.last_activity_at)
-      |> preload(:last_message)
-      |> select_merge([c], %{unread_count: subquery(unread_query)})
-      |> Repo.all()
-
-    conversations
-  end
-
-  def get_conversation!(app_id, id), do: Repo.get_by!(Conversation, app_id: app_id, id: id)
+  def get_or_create_conversation(app_id, user_a_id, user_b_id), do: adapter().get_or_create_conversation(app_id, user_a_id, user_b_id)
+  def get_conversation_for_user(app_id, conversation_id, user_id), do: adapter().get_conversation_for_user(app_id, conversation_id, user_id)
+  def list_user_conversations(app_id, user_id, opts \\ []), do: adapter().list_user_conversations(app_id, user_id, opts)
+  def get_conversation!(app_id, id), do: adapter().get_conversation!(app_id, id)
+  def delete_conversation(app_id, ids, user_id), do: adapter().delete_conversation(app_id, ids, user_id)
+  def archive_conversation(app_id, ids, user_id), do: adapter().archive_conversation(app_id, ids, user_id)
+  def unarchive_conversation(app_id, ids, user_id), do: adapter().unarchive_conversation(app_id, ids, user_id)
 
   # ─── Messages ─────────────────────────────────────────────────────────────────
 
-  @doc """
-  Insert message — persist first, broadcast second (aturan wajib).
-  Idempotent via client_id: jika sudah ada, kembalikan message yang ada.
-  """
-  def insert_message(attrs) do
-    changeset = Message.changeset(%Message{}, attrs)
+  def insert_message(attrs), do: adapter().insert_message(attrs)
+  def list_messages(app_id, conversation_id, user_id, opts \\ []), do: adapter().list_messages(app_id, conversation_id, user_id, opts)
+  def list_messages_by_ids(app_id, ids), do: adapter().list_messages_by_ids(app_id, ids)
+  def get_message!(id), do: adapter().get_message!(id)
+  def get_message_with_conversation!(message_id), do: adapter().get_message_with_conversation!(message_id)
 
-    case Repo.insert(changeset) do
-      {:ok, message} ->
-        # Update last_activity di conversation
-        update_conversation_activity(attrs.conversation_id, message.id)
-
-        # Preload attachments (both legacy singular and new plural)
-        message = Repo.preload(message, :attachment)
-
-        attachments =
-          if message.attachment_ids && message.attachment_ids != [] do
-            Logger.debug("Chat: Fetching attachments for IDs: #{inspect(message.attachment_ids)}")
-            Repo.all(from(a in Attachment, where: a.id in ^message.attachment_ids))
-          else
-            if message.attachment, do: [message.attachment], else: []
-          end
-
-        Logger.debug("Chat: Total attachments found: #{length(attachments)}")
-
-        # Enqueue Webhook for incoming message (B2B SDK feature)
-        %{
-          "event" => "message.created",
-          "payload" => %{
-            "message_id" => message.id,
-            "conversation_id" => message.conversation_id,
-            "sender_id" => message.sender_id,
-            "body" => message.body,
-            "type" => message.type,
-            "attachment_ids" => message.attachment_ids
-          }
-        }
-        |> Revoluchat.Workers.WebhookDispatcher.new()
-        |> Oban.insert()
-
-        {:ok, message, attachments}
-
-      {:error, %Ecto.Changeset{errors: [client_id: _]} = _changeset} ->
-        existing =
-          Repo.get_by!(Message, client_id: attrs[:client_id])
-          |> Repo.preload(:attachment)
-
-        attachments =
-          if existing.attachment_ids && existing.attachment_ids != [] do
-            Repo.all(from(a in Attachment, where: a.id in ^existing.attachment_ids))
-          else
-            if existing.attachment, do: [existing.attachment], else: []
-          end
-
-        {:ok, existing, attachments}
-
-      {:error, changeset} ->
-        Logger.error("Chat: Message insertion failed. Errors: #{inspect(changeset.errors)}")
-        {:error, changeset}
-    end
-  end
-
-  @doc """
-  Cursor-based pagination untuk message history.
-  before_id: ambil pesan sebelum message ini (untuk load more).
-  """
-  def list_messages(app_id, conversation_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 50)
-    before_id = Keyword.get(opts, :before_id)
-
-    query =
-      from(m in Message,
-        where: m.app_id == ^app_id,
-        where: m.conversation_id == ^conversation_id,
-        order_by: [desc: m.inserted_at],
-        limit: ^limit,
-        preload: [:attachment]
-      )
-
-    query =
-      if before_id do
-        # Ambil inserted_at dari cursor message
-        cursor_time = get_message_inserted_at(before_id)
-
-        from(m in query,
-          where: m.inserted_at < ^cursor_time
-        )
-      else
-        query
-      end
-
-    query =
-      if search_term = Keyword.get(opts, :search) do
-        search_pattern = "%#{search_term}%"
-
-        from(m in query,
-          where: ilike(m.body, ^search_pattern)
-        )
-      else
-        query
-      end
-
-    Repo.all(query) |> Enum.reverse()
-  end
-
-  def get_message!(id), do: Repo.get!(Message, id)
-
-  def get_message_with_conversation!(message_id) do
-    Repo.get!(Message, message_id)
-    |> Repo.preload(:conversation)
-  end
-
-  def mark_read(app_id, message_id, user_id) do
-    with {:ok, message} <- get_message_for_user(app_id, message_id, user_id) do
-      # Hanya recipient yang bisa mark read
-      if message.sender_id == user_id do
-        {:error, :cannot_mark_own_message}
-      else
-        message
-        |> Message.mark_read_changeset()
-        |> Repo.update()
-      end
-    end
-  end
-
-  def soft_delete_message(app_id, message_id, user_id) do
-    Logger.debug("Chat: Searching for message #{message_id} for User #{user_id}")
-    with {:ok, message} <- get_message_for_user(app_id, message_id, user_id) do
-      Logger.debug("Chat: Found message #{message_id}, checking ownership: sender_id=#{message.sender_id} vs user_id=#{user_id}")
-      if to_string(message.sender_id) != to_string(user_id) do
-        {:error, :unauthorized}
-      else
-        Logger.debug("Chat: Ownership confirmed, executing soft delete for message #{message_id}")
-        message
-        |> Message.soft_delete_changeset()
-        |> Repo.update()
-      end
-    end
-  end
-
-  def soft_delete_messages(app_id, message_ids, user_id) do
-    now = DateTime.utc_now()
-    
-    query = from(m in Message,
-      where: m.app_id == ^app_id,
-      where: m.id in ^message_ids,
-      where: m.sender_id == ^user_id
-    )
-    
-    Repo.update_all(query, set: [deleted_at: now, updated_at: now])
-    |> case do
-      {count, _} -> {:ok, count}
-      _ -> {:error, :failed}
-    end
-  end
+  def mark_read(app_id, message_id, user_id), do: adapter().mark_read(app_id, message_id, user_id)
+  def mark_delivered(app_id, message_id, user_id), do: adapter().mark_delivered(app_id, message_id, user_id)
+  def soft_delete_message(app_id, message_id, user_id), do: adapter().soft_delete_message(app_id, message_id, user_id)
+  def soft_delete_messages(app_id, message_ids, user_id), do: adapter().soft_delete_messages(app_id, message_ids, user_id)
 
   # ─── Attachments ──────────────────────────────────────────────────────────────
 
-  def get_attachment!(id), do: Repo.get!(Attachment, id)
-
-  @doc """
-  Initiate upload: Create pending attachment record & generate presigned URL.
-  Returns {:ok, attachment, upload_url}.
-  """
-  def create_attachment_init(attrs) do
-    uuid = Ecto.UUID.generate()
-    filename = attrs["filename"] || "unnamed"
-    clean_filename = sanitize_filename(filename)
-    ext = Path.extname(clean_filename)
-    mime_type = attrs["mime_type"]
-    category = get_category_from_mime(mime_type)
-    date = Date.to_string(Date.utc_today())
-
-    storage_key = "revoluchat/attachments/#{category}/#{date}/#{uuid}#{ext}"
-
-    # Store sanitized filename in metadata
-    metadata =
-      (attrs["metadata"] || %{})
-      |> Map.put("filename", clean_filename)
-
-    params =
-      Map.merge(attrs, %{
-        "storage_key" => storage_key,
-        "status" => "pending",
-        "metadata" => metadata
-      })
-
-    changeset = Attachment.changeset(%Attachment{}, params)
-
-    case Repo.insert(changeset) do
-      {:ok, attachment} ->
-        case Storage.presigned_upload_data(storage_key, content_type: attachment.mime_type) do
-          {:ok, upload_data} -> {:ok, attachment, upload_data}
-          {:error, reason} -> {:error, reason}
-        end
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
-  end
-
-  defp get_category_from_mime(nil), do: "documents"
-
-  defp get_category_from_mime(mime) do
-    cond do
-      String.starts_with?(mime, "image/") -> "images"
-      String.starts_with?(mime, "audio/") or mime == "application/ogg" -> "audio"
-      String.starts_with?(mime, "video/") -> "video"
-      true -> "documents"
-    end
-  end
-
-  defp sanitize_filename(filename) do
-    filename
-    |> String.replace(~r/[^a-zA-Z0-9.-]/, "_")
-  end
-
-  @doc """
-  Confirm upload: Verify object exists in storage & update status to approved.
-  """
+  def get_attachment!(id), do: Revoluchat.Chat.Adapters.Postgres.get_attachment!(id)
+  def create_attachment_init(attrs), do: Revoluchat.Chat.Adapters.Postgres.create_attachment_init(attrs)
+  
   def confirm_attachment(app_id, id, uploader_id) do
-    case Repo.get_by(Attachment, id: id, app_id: app_id) do
-      nil ->
-        {:error, :not_found}
-
-      attachment ->
-        if attachment.uploader_id != uploader_id do
-          {:error, :unauthorized}
-        else
-          # Verify storage existence
-          case Storage.head_object(attachment.storage_key) do
-            {:ok, _props} ->
-              {:ok, updated} =
-                attachment
-                |> Attachment.approve_changeset()
-                |> Repo.update()
-
-              # Enqueue scan job
-              %{attachment_id: updated.id}
-              |> Revoluchat.Workers.AttachmentScanWorker.new()
-              |> Oban.insert()
-
-              {:ok, updated}
-
-            {:error, {:http_error, 404, _}} ->
-              {:error, :file_not_found_in_storage}
-
-            {:error, reason} ->
-              {:error, reason}
-          end
+    # Always confirm in local Elixir DB first
+    case Revoluchat.Chat.Adapters.Postgres.confirm_attachment(app_id, id, uploader_id) do
+      {:ok, attachment} ->
+        # If Advance Tier, sync metadata to Go backend
+        if Application.get_env(:revoluchat, :tier_type) == "advance" do
+          Revoluchat.Grpc.ChatClient.register_attachment(attachment)
         end
+        {:ok, attachment}
+      error -> error
     end
   end
 
-  @doc """
-  Generate presigned download URL for an approved attachment.
-  Strict access control: uploader OR participant in a conversation using this attachment.
-  """
-  def get_attachment_download_url(app_id, attachment_id, user_id) do
-    with {:ok, attachment} <- get_approved_attachment_for_user(app_id, attachment_id, user_id) do
-      case Storage.presigned_get_url(attachment.storage_key) do
-        {:ok, url} -> {:ok, url}
-        {:error, reason} -> {:error, reason}
-      end
+  def approve_attachment_direct(app_id, id) do
+    case Revoluchat.Chat.Adapters.Postgres.approve_attachment_direct(app_id, id) do
+      {:ok, attachment} ->
+        if Application.get_env(:revoluchat, :tier_type) == "advance" do
+          Revoluchat.Grpc.ChatClient.register_attachment(attachment)
+        end
+        {:ok, attachment}
+      error -> error
     end
   end
 
-  # ─── Private ─────────────────────────────────────────────────────────────────
-
-  defp get_message_for_user(app_id, message_id, user_id) do
-    query =
-      from(m in Message,
-        join: c in Conversation,
-        on: m.conversation_id == c.id,
-        where: m.app_id == ^app_id and m.id == ^message_id,
-        where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      message -> {:ok, message}
+  def get_attachment_download_url(app_id, attachment_id, user_id), do: Revoluchat.Chat.Adapters.Postgres.get_attachment_download_url(app_id, attachment_id, user_id)
+  
+  def list_attachments_by_ids(app_id, ids) do
+    if Application.get_env(:revoluchat, :tier_type) == "advance" do
+      # In Advance Tier, get from Go and normalize (decode metadata string)
+      Revoluchat.Grpc.ChatClient.list_attachments_by_ids(app_id, ids)
+      |> Enum.map(&Revoluchat.Chat.Adapters.Grpc.normalize_attachment/1)
+    else
+      Revoluchat.Chat.Adapters.Postgres.list_attachments_by_ids(app_id, ids)
     end
   end
 
-  def get_approved_attachment_for_user(app_id, attachment_id, user_id) do
-    # 1. Check if uploader
-    case Repo.get_by(Attachment, id: attachment_id, app_id: app_id, status: "approved") do
-      %Attachment{uploader_id: ^user_id} = att ->
-        {:ok, att}
-
-      att when not is_nil(att) ->
-        # 2. Check if participant in any conversation containing this attachment
-        is_participant =
-          from(m in Message,
-            join: c in Conversation,
-            on: m.conversation_id == c.id,
-            where: m.attachment_id == ^attachment_id or ^attachment_id in m.attachment_ids,
-            where: c.user_a_id == ^user_id or c.user_b_id == ^user_id
-          )
-          |> Repo.exists?()
-
-        if is_participant, do: {:ok, att}, else: {:error, :not_found}
-
-      nil ->
-        {:error, :not_found}
-    end
-  end
-
-  # (unused)
-  # defp get_approved_attachment(id) do
-  #   case Repo.get(Attachment, id) do
-  #     nil -> {:error, :not_found}
-  #     %Attachment{status: "approved"} = att -> {:ok, att}
-  #     _ -> {:error, :not_found}
-  #   end
-  # end
-
-  defp update_conversation_activity(conversation_id, message_id) do
-    now = DateTime.utc_now()
-
-    from(c in Conversation, where: c.id == ^conversation_id)
-    |> Repo.update_all(set: [last_message_id: message_id, last_activity_at: now])
-  end
-
-  defp get_message_inserted_at(message_id) do
-    from(m in Message, where: m.id == ^message_id, select: m.inserted_at)
-    |> Repo.one!()
-  end
+  def get_approved_attachment_for_user(app_id, id, user_id), do: Revoluchat.Chat.Adapters.Postgres.get_approved_attachment_for_user(app_id, id, user_id)
 
   # ─── Analytics ──────────────────────────────────────────────────────────────
 
-  def count_messages_for_app(app_id) do
-    from(m in Message, where: m.app_id == ^app_id)
-    |> Repo.aggregate(:count, :id)
-  end
+  def count_messages_for_app(app_id), do: adapter().count_messages_for_app(app_id)
+  def count_active_conversations(app_id), do: adapter().count_active_conversations(app_id)
 
-  def count_active_conversations(app_id) do
-    from(c in Conversation, where: c.app_id == ^app_id and not is_nil(c.last_activity_at))
-    |> Repo.aggregate(:count, :id)
-  end
+  # --- GROUPS (ADVANCE TIER) ---
+
+  def create_group(app_id, params), do: adapter().create_group(app_id, params)
+  def get_group(app_id, group_id), do: adapter().get_group(app_id, group_id)
+  def add_members(app_id, group_id, user_ids, role \\ "member"), do: adapter().add_members(app_id, group_id, user_ids, role)
+  def remove_member(app_id, group_id, user_id), do: adapter().remove_member(app_id, group_id, user_id)
+  def update_group(app_id, group_id, params), do: adapter().update_group(app_id, group_id, params)
+  def leave_group(app_id, group_id, user_id), do: adapter().leave_group(app_id, group_id, user_id)
+  def delete_group(app_id, group_id), do: adapter().delete_group(app_id, group_id)
+  def mute_group(app_id, group_id, user_id, mute), do: adapter().mute_group(app_id, group_id, user_id, mute)
+  def accept_group_invitation(app_id, group_id, user_id), do: adapter().accept_group_invitation(app_id, group_id, user_id)
 end

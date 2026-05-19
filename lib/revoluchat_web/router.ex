@@ -54,6 +54,7 @@ defmodule RevoluchatWeb.Router do
     live_session :admin, on_mount: [{RevoluchatWeb.AdminAuth, :default}] do
       live("/", AdminDashboardLive, :summary)
       live("/activity", AdminDashboardLive, :activity)
+      live("/users", AdminDashboardLive, :users)
       live("/setting", AdminDashboardLive, :setting)
       live("/documentation", AdminDashboardLive, :documentation)
       live("/apikeys", AdminDashboardLive, :api_keys)
@@ -63,6 +64,40 @@ defmodule RevoluchatWeb.Router do
 
   # ─── API v1 ──────────────────────────────────────────────────────────────────
 
+  # scope "/api/a/v1", RevoluchatWeb do
+  #   pipe_through([:api, :authenticated])
+  #
+  #   get("/conversations", ConversationController, :index)
+  #   post("/conversations", ConversationController, :create)
+  #   get("/conversations/:id", ConversationController, :show)
+  #   delete("/conversations/:id", ConversationController, :delete)
+  #   delete("/conversations", ConversationController, :delete)
+  #   post("/conversations/archive", ConversationController, :archive)
+  #   post("/conversations/unarchive", ConversationController, :unarchive)
+  #
+  #   get("/conversations/:conversation_id/messages", MessageController, :index)
+  #   post("/conversations/:conversation_id/messages", MessageController, :create)
+  #   get("/contacts", ContactController, :index)
+  #   post("/contacts", ContactController, :create)
+  #   post("/contacts/sync", ContactController, :sync)
+  #   post("/groups", GroupController, :create)
+  #   get("/groups/:id", GroupController, :show)
+  #   put("/groups/:id", GroupController, :update)
+  #   post("/groups/:id/members", GroupController, :add_members)
+  #   delete("/groups/:id/members/:user_id", GroupController, :remove_member)
+  #   post("/groups/:id/leave", GroupController, :leave)
+  #   post("/groups/:id/mute", GroupController, :mute)
+  #   post("/groups/:id/accept", GroupController, :accept)
+  #   get("/rtc_config", RTCController, :index)
+  #   get("/calls/history", CallController, :history)
+  #   delete("/calls/history", CallController, :delete_history)
+  #   post("/attachments/init", AttachmentController, :init)
+  #   put("/attachments/:id/upload", AttachmentController, :upload)
+  #   post("/attachments/:id/confirm", AttachmentController, :confirm)
+  #   get("/attachments/:id/download", AttachmentController, :download)
+  #   get("/attachments/:id/show", AttachmentController, :show)
+  # end
+
   scope "/api/v1", RevoluchatWeb do
     pipe_through([:api, :authenticated])
 
@@ -70,10 +105,15 @@ defmodule RevoluchatWeb.Router do
     get("/conversations", ConversationController, :index)
     post("/conversations", ConversationController, :create)
     get("/conversations/:id", ConversationController, :show)
+    delete("/conversations/:id", ConversationController, :delete)
+    delete("/conversations", ConversationController, :delete)
+    post("/conversations/archive", ConversationController, :archive)
+    post("/conversations/unarchive", ConversationController, :unarchive)
 
     # Contacts
     get("/contacts", ContactController, :index)
     post("/contacts", ContactController, :create)
+    post("/contacts/sync", ContactController, :sync)
 
     # Push tokens
     post("/push_tokens", PushTokenController, :create)
@@ -97,6 +137,16 @@ defmodule RevoluchatWeb.Router do
     # Call History
     get("/calls/history", CallController, :history)
     delete("/calls/history", CallController, :delete_history)
+
+    # Groups
+    post("/groups", GroupController, :create)
+    get("/groups/:id", GroupController, :show)
+    put("/groups/:id", GroupController, :update)
+    post("/groups/:id/members", GroupController, :add_members)
+    delete("/groups/:id/members/:user_id", GroupController, :remove_member)
+    post("/groups/:id/leave", GroupController, :leave)
+    post("/groups/:id/mute", GroupController, :mute)
+    post("/groups/:id/accept", GroupController, :accept)
   end
 
   scope "/api/v1", RevoluchatWeb do

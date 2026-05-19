@@ -11,7 +11,8 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     SettingSection,
     ApiKeysSection,
     ServerKeysSection,
-    DocumentationSection
+    DocumentationSection,
+    UserSection
   }
 
   @impl true
@@ -35,7 +36,21 @@ defmodule RevoluchatWeb.AdminDashboardLive do
      |> assign(show_delete_server_modal: false)
      |> assign(deleting_server_key_id: nil)
      |> assign(show_revoke_server_modal: false)
-     |> assign(revoking_server_key_id: nil)}
+     |> assign(revoking_server_key_id: nil)
+     |> assign(show_server_error_modal: false)
+     |> assign(server_error_message: "")
+     # User Section assigns
+     |> assign(users: [])
+     |> assign(user_page: 1)
+     |> assign(user_search: "")
+     |> assign(user_status: "all")
+     |> assign(user_total_count: 0)
+     |> assign(user_total_pages: 0)
+     |> assign(selected_user: nil)
+     |> assign(show_user_detail_modal: false)
+     |> assign(show_suspend_modal: false)
+     |> assign(show_unsuspend_modal: false)
+     |> assign(user_connection_error: nil)}
   end
 
   @impl true
@@ -55,6 +70,14 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     socket |> assign(active_tab: :activity) |> assign(page_title: "Activity")
   end
 
+  defp apply_action(socket, :users, _params) do
+    socket
+    |> assign(active_tab: :users)
+    |> assign(page_title: "Users")
+    |> assign(user_page: 1)
+    |> assign(user_search: "")
+    |> assign_users()
+  end
 
   defp apply_action(socket, :setting, _params) do
     socket |> assign(active_tab: :setting) |> assign(page_title: "Settings")
@@ -92,14 +115,24 @@ defmodule RevoluchatWeb.AdminDashboardLive do
           []
       end
 
+    connected? =
+      case Revoluchat.Accounts.check_active_server_key_connection() do
+        {:ok, :connected} -> true
+        _ -> false
+      end
+
     signer_count =
-      try do
-        case Revoluchat.Accounts.JwksStrategy.list_signers() do
-          {:ok, signers} -> map_size(signers)
+      if connected? do
+        try do
+          case Revoluchat.Accounts.JwksStrategy.list_signers() do
+            {:ok, signers} -> map_size(signers)
+            _ -> 0
+          end
+        rescue
           _ -> 0
         end
-      rescue
-        _ -> 0
+      else
+        0
       end
 
     socket
@@ -109,6 +142,8 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     |> assign(signer_count: signer_count)
     |> assign(show_delete_server_modal: false)
     |> assign(show_revoke_server_modal: false)
+    |> assign(show_server_error_modal: false)
+    |> assign(server_error_message: "")
   end
 
   @impl true
@@ -188,6 +223,7 @@ defmodule RevoluchatWeb.AdminDashboardLive do
 
   def handle_event("connect_server_key", %{"id" => id}, socket) do
     Logger.info("Event connect_server_key triggered for id: #{id}")
+
     case Revoluchat.Accounts.connect_server_key(id) do
       {:ok, signers} when is_list(signers) ->
         {:noreply,
@@ -210,11 +246,31 @@ defmodule RevoluchatWeb.AdminDashboardLive do
          |> assign(server_keys: safe_list_server_keys())}
 
       {:error, reason} ->
+        Logger.error("Failed to connect Server Key: #{inspect(reason)}")
+
+        # Format the reason for better user readability
+        error_msg =
+          case reason do
+            :could_not_reach_jwks_url ->
+              "Tidak dapat menghubungi URL JWKS. Pastikan server tujuan sedang berjalan dan dapat diakses."
+
+            {:error, :could_not_reach_jwks_url} ->
+              "Tidak dapat menghubungi URL JWKS. Pastikan server tujuan sedang berjalan dan dapat diakses."
+
+            {:error, :invalid_server_key} ->
+              "Server Key tidak valid atau tidak diizinkan oleh server tujuan."
+
+            other ->
+              "Gagal verifikasi JWKS: #{inspect(other)}"
+          end
+
         {:noreply,
          socket
          |> put_flash(:error, "Failed to connect Server Key: #{inspect(reason)}")
          |> assign(server_keys: safe_list_server_keys())
-         |> assign(signer_count: 0)}
+         |> assign(signer_count: 0)
+         |> assign(show_server_error_modal: true)
+         |> assign(server_error_message: error_msg)}
     end
   end
 
@@ -274,8 +330,99 @@ defmodule RevoluchatWeb.AdminDashboardLive do
        show_delete_server_modal: false,
        deleting_server_key_id: nil,
        show_revoke_server_modal: false,
-       revoking_server_key_id: nil
+       revoking_server_key_id: nil,
+       show_server_error_modal: false,
+       server_error_message: ""
      )}
+  end
+
+  # --- User Management Events ---
+
+  def handle_event("view_user_detail", %{"id" => id}, socket) do
+    user = Enum.find(socket.assigns.users, &(&1.id == id))
+    {:noreply, assign(socket, show_user_detail_modal: true, selected_user: user)}
+  end
+
+  def handle_event("open_suspend_modal", %{"id" => id}, socket) do
+    user = Enum.find(socket.assigns.users, &(&1.id == id))
+    {:noreply, assign(socket, show_suspend_modal: true, selected_user: user)}
+  end
+
+  def handle_event("open_unsuspend_modal", %{"id" => id}, socket) do
+    user = Enum.find(socket.assigns.users, &(&1.id == id))
+    {:noreply, assign(socket, show_unsuspend_modal: true, selected_user: user)}
+  end
+
+  def handle_event("close_user_modal", _params, socket) do
+    {:noreply,
+     assign(socket,
+       show_user_detail_modal: false,
+       show_suspend_modal: false,
+       show_unsuspend_modal: false,
+       selected_user: nil
+     )}
+  end
+
+  def handle_event(
+        "confirm_suspend",
+        %{"id" => uuid, "duration" => duration, "reason" => reason},
+        socket
+      ) do
+    case Revoluchat.Grpc.AdminClient.suspend_user(uuid, duration, reason) do
+      {:ok, _response} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "User suspended successfully")
+         |> assign(show_suspend_modal: false, selected_user: nil)
+         |> assign_users()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to suspend user: #{inspect(reason)}")
+         |> assign(show_suspend_modal: false, selected_user: nil)}
+    end
+  end
+
+  def handle_event("confirm_unsuspend", %{"id" => uuid}, socket) do
+    case Revoluchat.Grpc.AdminClient.unsuspend_user(uuid) do
+      {:ok, _response} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "User unsuspended successfully")
+         |> assign(show_unsuspend_modal: false, selected_user: nil)
+         |> assign_users()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to unsuspend user: #{inspect(reason)}")
+         |> assign(show_unsuspend_modal: false, selected_user: nil)}
+    end
+  end
+
+  def handle_event("search_users", %{"search" => search}, socket) do
+    {:noreply,
+     socket
+     |> assign(user_search: search, user_page: 1)
+     |> assign_users()}
+  end
+
+  def handle_event("change_page", %{"page" => page_str}, socket) do
+    page = String.to_integer(page_str)
+
+    {:noreply,
+     socket
+     |> assign(user_page: page)
+     |> assign_users()}
+  end
+
+  def handle_event("filter_status", %{"status" => status}, socket) do
+    {:noreply,
+     socket
+     |> assign(user_status: status)
+     |> assign(user_page: 1)
+     |> assign_users()}
   end
 
   @impl true
@@ -293,14 +440,17 @@ defmodule RevoluchatWeb.AdminDashboardLive do
      |> assign(show_delete_modal: false)
      |> assign(show_revoke_modal: false)
      |> assign(show_delete_server_modal: false)
-     |> assign(show_revoke_server_modal: false)}
+     |> assign(show_revoke_server_modal: false)
+     |> assign(show_user_detail_modal: false)
+     |> assign(show_suspend_modal: false)
+     |> assign(show_unsuspend_modal: false)
+     |> assign(selected_user: nil)}
   end
 
   @impl true
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, assign(socket, sidebar_collapsed: !socket.assigns.sidebar_collapsed)}
   end
-
 
   @impl true
   def handle_info(:refresh_stats, socket) do
@@ -310,10 +460,20 @@ defmodule RevoluchatWeb.AdminDashboardLive do
 
   defp assign_stats(socket) do
     try do
+      connected? =
+        case Revoluchat.Accounts.check_active_server_key_connection() do
+          {:ok, :connected} -> true
+          _ -> false
+        end
+
       signer_count =
-        case Revoluchat.Accounts.JwksStrategy.list_signers() do
-          {:ok, signers} -> map_size(signers)
-          _ -> 0
+        if connected? do
+          case Revoluchat.Accounts.JwksStrategy.list_signers() do
+            {:ok, signers} -> map_size(signers)
+            _ -> 0
+          end
+        else
+          0
         end
 
       socket
@@ -333,10 +493,49 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     end
   end
 
+  defp assign_users(socket) do
+    search = socket.assigns.user_search
+    page = socket.assigns.user_page
+    status = socket.assigns.user_status
+
+    connected? =
+      case Revoluchat.Accounts.check_active_server_key_connection() do
+        {:ok, :connected} -> true
+        _ -> false
+      end
+
+    if connected? do
+      case Revoluchat.Grpc.AdminClient.list_users(search, page, 10, status) do
+        {:ok, result} ->
+          socket
+          |> assign(users: result.users)
+          |> assign(user_total_count: result.total_count)
+          |> assign(user_total_pages: result.total_pages)
+          |> assign(user_connection_error: nil)
+
+        {:error, reason} ->
+          Logger.error("Failed to list users: #{inspect(reason)}")
+
+          socket
+          |> assign(users: [])
+          |> assign(user_total_count: 0)
+          |> assign(user_total_pages: 0)
+          |> assign(user_connection_error: "Gagal mengambil data karena koneksi ke server error")
+          |> put_flash(:error, "Gagal mengambil data karena koneksi ke server error")
+      end
+    else
+      socket
+      |> assign(users: [])
+      |> assign(user_total_count: 0)
+      |> assign(user_total_pages: 0)
+      |> assign(user_connection_error: "Gagal mengambil data karena koneksi ke server error")
+      |> put_flash(:error, "Gagal mengambil data karena koneksi ke server error")
+    end
+  end
+
   defp schedule_refresh do
     Process.send_after(self(), :refresh_stats, 5000)
   end
-
 
   defp safe_list_api_keys do
     try do
@@ -367,6 +566,7 @@ defmodule RevoluchatWeb.AdminDashboardLive do
           case @active_tab do
             :summary -> "Enterprise Summary"
             :activity -> "Recent Activity"
+            :users -> "User Management"
             :setting -> "System Settings"
             :documentation -> "API & Integration Guide"
             :api_keys -> "Developer API Keys"
@@ -378,6 +578,7 @@ defmodule RevoluchatWeb.AdminDashboardLive do
           case @active_tab do
             :summary -> "Overview of your Revoluchat Enterprise instance stats."
             :activity -> "Real-time monitoring and event connection logs."
+            :users -> "Manage user accounts, view active connections, and handle suspensions."
             :setting -> "Configure system-wide parameters and integrations."
             :documentation -> "Technical documentation for developers to integrate with Revoluchat."
             :api_keys -> "Manage secure access keys for developer integrations."
@@ -398,6 +599,21 @@ defmodule RevoluchatWeb.AdminDashboardLive do
         <ActivitySection.render />
       <% end %>
 
+      <%= if @active_tab == :users do %>
+        <UserSection.render
+          users={@users}
+          page={@user_page}
+          search={@user_search}
+          status={@user_status}
+          total_count={@user_total_count}
+          total_pages={@user_total_pages}
+          selected_user={@selected_user}
+          show_detail={@show_user_detail_modal}
+          show_suspend={@show_suspend_modal}
+          show_unsuspend={@show_unsuspend_modal}
+          connection_error={@user_connection_error}
+        />
+      <% end %>
 
       <%= if @active_tab == :setting do %>
         <SettingSection.render />
@@ -417,6 +633,8 @@ defmodule RevoluchatWeb.AdminDashboardLive do
           signer_count={@signer_count}
           show_delete_server_modal={@show_delete_server_modal}
           show_revoke_server_modal={@show_revoke_server_modal}
+          show_server_error_modal={@show_server_error_modal}
+          server_error_message={@server_error_message}
         />
       <% end %>
 

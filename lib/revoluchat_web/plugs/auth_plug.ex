@@ -8,44 +8,90 @@ defmodule RevoluchatWeb.Plugs.AuthPlug do
   import Phoenix.Controller, only: [json: 2]
 
   alias Revoluchat.Accounts
-  alias Revoluchat.Accounts.ApiKey
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         [api_key] <- get_req_header(conn, "x-api-key"),
-         %ApiKey{app_id: api_key_app_id} <- Accounts.get_api_key_by_key(api_key),
-         {:ok, %{user_id: user_id, app_id: token_app_id}} <- Accounts.verify_token(token),
-         {:ok, user} <- Accounts.verify_user_exists(user_id) do
-      # Prioritizing app_id from token if available, fallback to API Key app_id
-      app_id = token_app_id || api_key_app_id
+    conn = fetch_query_params(conn)
+    # Try headers first, then params for media assets
+    token = 
+      case get_req_header(conn, "authorization") do
+        ["Bearer " <> t] -> t
+        _ -> conn.query_params["token"]
+      end
 
-      # Ensure user_id is an integer if numeric
-      user_id =
-        if is_binary(user_id) and Regex.match?(~r/^\d+$/, user_id),
-          do: String.to_integer(user_id),
-          else: user_id
+    api_key = 
+      case get_req_header(conn, "x-api-key") do
+        [k] -> k
+        _ -> conn.query_params["api_key"]
+      end
 
-      # Sync user data locally (caching name, phone, avatar)
-      Accounts.ensure_user_chat_registered(user_id, app_id, user)
+    require Logger
+    Logger.info("AuthPlug: Examining request. Query String: #{inspect(conn.query_string)}")
+    Logger.info("AuthPlug: Extracted Token: #{if token, do: "Present (length #{String.length(token)})", else: "nil"}")
+    Logger.info("AuthPlug: Extracted API Key: #{inspect(api_key)}")
 
-      conn
-      |> assign(:current_user_id, user_id)
-      |> assign(:current_app_id, app_id)
-      |> assign(:api_key, api_key)
+    with t when not is_nil(t) <- token,
+         k when not is_nil(k) <- api_key do
+      
+      Logger.info("AuthPlug: Found Token and API Key. Verifying API Key...")
+      
+      case Accounts.get_api_key_by_key(k) do
+        nil ->
+          Logger.error("AuthPlug: API Key not found in database: #{inspect(k)}")
+          unauthorized(conn, "API Key tidak valid")
+
+        api_key_record ->
+          Logger.debug("AuthPlug: API Key record found. Verifying JWT Token...")
+          
+          case Accounts.verify_token(t) do
+            {:ok, %{user_id: user_id, app_id: token_app_id}} ->
+              Logger.debug("AuthPlug: JWT Token verified for user_id: #{user_id}")
+              
+              case Accounts.verify_user_exists(user_id) do
+                {:ok, user} ->
+                  # Prioritizing app_id from token if available, fallback to API Key app_id
+                  app_id = token_app_id || api_key_record.app_id
+                  
+                  # Keep user_id as string (UUID)
+                  user_id = to_string(user_id)
+
+                  # Capture numeric ID if available for legacy features (like attachments)
+                  numeric_id = 
+                    case user.id do
+                      id when is_integer(id) -> id
+                      id when is_binary(id) -> 
+                        case Integer.parse(id) do
+                          {int, ""} -> int
+                          _ -> nil
+                        end
+                      _ -> nil
+                    end
+
+                  # Sync user data locally (caching name, phone, avatar)
+                  Accounts.ensure_user_chat_registered(user_id, app_id, user)
+
+                  conn
+                  |> assign(:current_user_id, user_id)
+                  |> assign(:current_numeric_user_id, numeric_id)
+                  |> assign(:current_app_id, app_id)
+                  |> assign(:api_key, k)
+                  |> assign(:token, t)
+
+                {:error, _reason} ->
+                  Logger.error("AuthPlug: User not found in remote service: #{user_id}")
+                  unauthorized(conn, "User tidak ditemukan")
+              end
+
+            {:error, reason} ->
+              Logger.error("AuthPlug: JWT Verification failed: #{inspect(reason)}")
+              unauthorized(conn, "Token tidak valid atau sudah expired")
+          end
+      end
     else
-      [] ->
-        unauthorized(conn, "Authorization header dan X-API-KEY diperlukan")
-
-      nil ->
-        unauthorized(conn, "API Key tidak valid atau sudah tidak aktif")
-
-      {:error, :user_not_found} ->
-        unauthorized(conn, "User tidak ditemukan")
-
-      {:error, _reason} ->
-        unauthorized(conn, "Token tidak valid atau sudah expired")
+      _ ->
+        Logger.error("AuthPlug: Missing token or api_key. Token: #{inspect(token)}, API Key: #{inspect(api_key)}")
+        unauthorized(conn, "Token atau API Key tidak ditemukan (cek header/params)")
     end
   end
 

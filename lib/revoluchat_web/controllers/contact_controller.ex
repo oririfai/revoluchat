@@ -22,10 +22,22 @@ defmodule RevoluchatWeb.ContactController do
     current_user_id = conn.assigns.current_user_id
 
     case Accounts.add_contact_by_phone(app_id, current_user_id, phone) do
-      {:ok, _contact} ->
+      {:ok, contact} ->
+        # Fetch target user data to return to SDK
+        user = Accounts.get_registered_user(app_id, contact.contact_id)
+        
         conn
         |> put_status(:created)
-        |> json(%{message: "Kontak berhasil ditambahkan"})
+        |> json(%{
+          message: "Kontak berhasil ditambahkan",
+          data: %{
+            id: to_string(user.user_id),
+            chat_id: user.chat_id,
+            name: user.name || "User #{user.user_id}",
+            phone: user.phone,
+            avatar_url: user.avatar_url
+          }
+        })
 
       {:error, :user_not_found} ->
         conn
@@ -42,5 +54,22 @@ defmodule RevoluchatWeb.ContactController do
         |> put_status(:conflict)
         |> json(%{error: "conflict", message: "Kontak sudah ada di daftar Anda"})
     end
+  end
+
+  @doc """
+  Sync phone contacts and return registered users.
+  Expects %{"phones" => ["0812...", "0813..."]}
+  """
+  def sync(conn, %{"phones" => phones}) when is_list(phones) do
+    app_id = conn.assigns.current_app_id
+    users = Accounts.sync_contacts(app_id, phones)
+
+    json(conn, %{contacts: users})
+  end
+
+  def sync(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "bad_request", message: "Parameter 'phones' harus berupa list"})
   end
 end

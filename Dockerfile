@@ -41,11 +41,15 @@ COPY priv priv
 COPY lib lib
 COPY assets assets
 
-# Pre-download Tailwind binary to avoid timeout issues in mix assets.deploy
+# Pre-download Tailwind and Esbuild binaries to avoid timeout/DNS issues in mix assets.deploy
 # We target linux-arm64 as the build is running on an ARM-based environment (Mac Silicon)
 RUN mkdir -p _build && \
     curl -fSL https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.3/tailwindcss-linux-arm64 -o _build/tailwind-linux-arm64 && \
-    chmod +x _build/tailwind-linux-arm64
+    chmod +x _build/tailwind-linux-arm64 && \
+    curl -fSL https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.21.5.tgz | tar -xz -C _build && \
+    (mv _build/package/bin/esbuild _build/esbuild-linux-arm64 || mv _build/package/esbuild _build/esbuild-linux-arm64) && \
+    rm -rf _build/package && \
+    chmod +x _build/esbuild-linux-arm64
 
 # deploy assets
 RUN mix assets.deploy

@@ -15,6 +15,7 @@ defmodule Revoluchat.Calls.Call do
     field(:started_at, :utc_datetime)
     field(:ended_at, :utc_datetime)
     field(:duration_seconds, :integer)
+    field(:group_id, :string)
 
     belongs_to(:conversation, Revoluchat.Chat.Conversation)
 
@@ -33,9 +34,10 @@ defmodule Revoluchat.Calls.Call do
       :status,
       :started_at,
       :ended_at,
-      :duration_seconds
+      :duration_seconds,
+      :group_id
     ])
-    |> validate_required([:app_id, :conversation_id, :caller_id, :receiver_id, :type, :status])
+    |> validate_required([:app_id, :caller_id, :type, :status])
     |> validate_inclusion(:type, ["audio", "video"])
     |> validate_inclusion(:status, [
       "dialing",

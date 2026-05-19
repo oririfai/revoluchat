@@ -2,16 +2,437 @@ syntax = "proto3";
 
 package revoluchat.v1;
 
+option go_package = "github.com/oririfai/revoluchat-go-sdk/proto/chat_v1";
+
+// ─── CONVERSATIONS ───────────────────────────────────────────────────────────
+
 service ConversationService {
+  // Creates or retrieves an existing conversation between two users.
   rpc CreateConversation (CreateConversationRequest) returns (CreateConversationResponse);
+  // Lists conversations for a specific user.
+  rpc ListConversations (ListConversationsRequest) returns (ListConversationsResponse);
+  // Gets a single conversation by ID.
+  rpc GetConversation (GetConversationRequest) returns (GetConversationResponse);
+  // Deletes a conversation for the requesting user (soft delete).
+  rpc DeleteConversation (DeleteConversationRequest) returns (ActionResponse);
+  // Archives a conversation for the requesting user.
+  rpc ArchiveConversation (ArchiveConversationRequest) returns (ActionResponse);
+  // Unarchives a conversation for the requesting user.
+  rpc UnarchiveConversation (UnarchiveConversationRequest) returns (ActionResponse);
+}
+
+message DeleteConversationRequest {
+  string app_id = 1;
+  string user_id = 2;
+  repeated string ids = 3;
+}
+
+message ArchiveConversationRequest {
+  string app_id = 1;
+  string user_id = 2;
+  repeated string ids = 3;
+}
+
+message UnarchiveConversationRequest {
+  string app_id = 1;
+  string user_id = 2;
+  repeated string ids = 3;
 }
 
 message CreateConversationRequest {
-  uint64 user_a_id = 1;
-  uint64 user_b_id = 2;
+  string user_a_id = 1;
+  string user_b_id = 2;
+  string app_id = 3;
 }
 
 message CreateConversationResponse {
   string conversation_id = 1;
   bool is_new = 2;
+  Conversation conversation = 3;
+}
+
+message ListConversationsRequest {
+  string user_id = 1;
+  string app_id = 2;
+  string search = 3;
+}
+
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+}
+
+message GetConversationRequest {
+  string app_id = 1;
+  string conversation_id = 2;
+}
+
+message GetConversationResponse {
+  Conversation conversation = 1;
+}
+
+message Conversation {
+  string id = 1;
+  string app_id = 2;
+  string user_a_id = 3;
+  string user_b_id = 4;
+  string last_activity_at = 5;
+  Message last_message = 6;
+  uint32 unread_count = 7;
+  string type = 8; // "direct" or "group"
+  Group group = 9; // Optional, only if type is "group"
+  string archived_at = 10;
+}
+
+// ─── GROUPS (ADVANCE TIER) ──────────────────────────────────────────────────
+
+service GroupService {
+  rpc CreateGroup (CreateGroupRequest) returns (CreateGroupResponse);
+  rpc GetGroup (GetGroupRequest) returns (GetGroupResponse);
+  rpc AddMembers (AddMembersRequest) returns (ActionResponse);
+  rpc RemoveMember (RemoveMemberRequest) returns (ActionResponse);
+  rpc UpdateGroup (UpdateGroupRequest) returns (UpdateGroupResponse);
+  rpc LeaveGroup (LeaveGroupRequest) returns (ActionResponse);
+  rpc DeleteGroup (DeleteGroupRequest) returns (ActionResponse);
+  rpc MuteGroup (MuteGroupRequest) returns (ActionResponse);
+  rpc AcceptGroupInvitation (AcceptGroupInvitationRequest) returns (ActionResponse);
+}
+
+message Group {
+  string id = 1;
+  string app_id = 2;
+  string name = 3;
+  string description = 4;
+  string avatar_url = 5;
+  bool is_locked = 6;
+  string creator_id = 7;
+  string inserted_at = 8;
+  string updated_at = 9;
+  repeated GroupMember members = 10;
+  uint32 unread_count = 11;
+  string my_status = 12;
+  Message last_message = 13;
+}
+
+message GroupMember {
+  string user_id = 1;
+  string role = 2; // "admin" or "member"
+  bool is_muted = 3;
+  string joined_at = 4;
+  string status = 5; // "pending", "accepted"
+}
+
+message CreateGroupRequest {
+  string app_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string member_ids = 4;
+  repeated string admin_ids = 5;
+  string avatar_url = 6;
+}
+
+message CreateGroupResponse {
+  Group group = 1;
+}
+
+message GetGroupRequest {
+  string app_id = 1;
+  string group_id = 2;
+}
+
+message GetGroupResponse {
+  Group group = 1;
+}
+
+message AddMembersRequest {
+  string app_id = 1;
+  string group_id = 2;
+  repeated string user_ids = 3;
+  string role = 4; // "admin" or "member"
+}
+
+message RemoveMemberRequest {
+  string app_id = 1;
+  string group_id = 2;
+  string user_id = 3;
+}
+
+message UpdateGroupRequest {
+  string app_id = 1;
+  string group_id = 2;
+  string name = 3;
+  string description = 4;
+  string avatar_url = 5;
+  bool is_locked = 6;
+}
+
+message UpdateGroupResponse {
+  Group group = 1;
+}
+
+message LeaveGroupRequest {
+  string app_id = 1;
+  string group_id = 2;
+}
+
+message AcceptGroupInvitationRequest {
+  string app_id = 1;
+  string group_id = 2;
+}
+
+message DeleteGroupRequest {
+  string app_id = 1;
+  string group_id = 2;
+}
+
+message MuteGroupRequest {
+  string app_id = 1;
+  string group_id = 2;
+  bool mute = 3;
+}
+
+message ActionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ─── ATTACHMENTS ────────────────────────────────────────────────────────────
+
+service AttachmentService {
+  rpc RegisterAttachment (RegisterAttachmentRequest) returns (RegisterAttachmentResponse);
+  rpc ListAttachmentsByIds (ListAttachmentsByIdsRequest) returns (ListAttachmentsByIdsResponse);
+}
+
+message Attachment {
+  string id = 1;
+  string app_id = 2;
+  string uploader_id = 3;
+  string storage_key = 4;
+  string mime_type = 5;
+  uint64 size = 6;
+  string checksum = 7;
+  string status = 8;
+  string metadata = 9; // JSON string
+  string inserted_at = 10;
+  string updated_at = 11;
+}
+
+message RegisterAttachmentRequest {
+  string id = 1;
+  string app_id = 2;
+  string uploader_id = 3;
+  string storage_key = 4;
+  string mime_type = 5;
+  uint64 size = 6;
+  string checksum = 7;
+  string status = 8;
+  string metadata = 9;
+}
+
+message RegisterAttachmentResponse {
+  Attachment attachment = 1;
+}
+
+message ListAttachmentsByIdsRequest {
+  string app_id = 1;
+  repeated string ids = 2;
+}
+
+message ListAttachmentsByIdsResponse {
+  repeated Attachment attachments = 1;
+}
+
+// ─── MESSAGES ────────────────────────────────────────────────────────────────
+
+service MessageService {
+  rpc InsertMessage (InsertMessageRequest) returns (InsertMessageResponse);
+  rpc ListMessages (ListMessagesRequest) returns (ListMessagesResponse);
+  rpc MarkRead (MarkReadRequest) returns (MarkReadResponse);
+  rpc MarkDelivered (MarkDeliveredRequest) returns (MarkDeliveredResponse);
+  rpc DeleteMessage (DeleteMessageRequest) returns (DeleteMessageResponse);
+  rpc BulkDeleteMessages (BulkDeleteMessagesRequest) returns (BulkDeleteMessagesResponse);
+}
+
+message Message {
+  string id = 1;
+  string app_id = 2;
+  string conversation_id = 3;
+  string group_id = 16; 
+  string sender_id = 4;
+  string type = 5;
+  string body = 6;
+  bool is_encrypted = 7;
+  string client_id = 8;
+  string reply_to_id = 9;
+  repeated string attachment_ids = 10;
+  string attachment_id = 11;
+  string inserted_at = 12;
+  string delivered_at = 13;
+  string read_at = 14;
+  string deleted_at = 15;
+  repeated Attachment attachments = 17; // Added for rich metadata
+}
+
+message InsertMessageRequest {
+  string app_id = 1;
+  string conversation_id = 2;
+  string group_id = 11; // Added for Group Support
+  string sender_id = 3;
+  string type = 4;
+  string body = 5;
+  bool is_encrypted = 6;
+  string client_id = 7;
+  string reply_to_id = 8;
+  repeated string attachment_ids = 9;
+  string attachment_id = 10;
+}
+
+message InsertMessageResponse {
+  Message message = 1;
+}
+
+message ListMessagesRequest {
+  string app_id = 1;
+  string conversation_id = 2;
+  string group_id = 6; // Added for Group Support
+  uint32 limit = 3;
+  string before_id = 4;
+  string search = 5;
+  repeated string message_ids = 7;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+}
+
+message MarkReadRequest {
+  string app_id = 1;
+  string message_id = 2;
+  string user_id = 3;
+}
+
+message MarkReadResponse {
+  Message message = 1;
+}
+
+message MarkDeliveredRequest {
+  string app_id = 1;
+  string message_id = 2;
+  string user_id = 3;
+}
+
+message MarkDeliveredResponse {
+  Message message = 1;
+}
+
+message DeleteMessageRequest {
+  string app_id = 1;
+  string message_id = 2;
+  string user_id = 3;
+}
+
+message DeleteMessageResponse {
+  Message message = 1;
+}
+
+message BulkDeleteMessagesRequest {
+  string app_id = 1;
+  repeated string message_ids = 2;
+  string user_id = 3;
+}
+
+message BulkDeleteMessagesResponse {
+  uint32 count = 1;
+}
+
+// ─── CALLS ───────────────────────────────────────────────────────────────────
+
+service CallService {
+  rpc InitiateCall (InitiateCallRequest) returns (InitiateCallResponse);
+  rpc UpdateCallStatus (UpdateCallStatusRequest) returns (UpdateCallStatusResponse);
+  rpc GetCall (GetCallRequest) returns (GetCallResponse);
+  rpc ListCallHistory (ListCallHistoryRequest) returns (ListCallHistoryResponse);
+  rpc DeleteCallHistory (DeleteCallHistoryRequest) returns (DeleteCallHistoryResponse);
+}
+
+message GetCallRequest {
+  string app_id = 1;
+  string call_id = 2;
+}
+
+message GetCallResponse {
+  Call call = 1;
+}
+
+message Call {
+  string id = 1;
+  string app_id = 2;
+  string conversation_id = 3;
+  string group_id = 11; // Added for Group Support
+  string caller_id = 4;
+  string receiver_id = 5;
+  string type = 6;
+  string status = 7;
+  uint32 duration_seconds = 8;
+  string started_at = 9;
+  string ended_at = 10;
+}
+
+message InitiateCallRequest {
+  string app_id = 1;
+  string conversation_id = 2;
+  string group_id = 6; // Added for Group Support
+  string caller_id = 3;
+  string receiver_id = 4;
+  string type = 5;
+}
+
+message InitiateCallResponse {
+  Call call = 1;
+}
+
+message UpdateCallStatusRequest {
+  string app_id = 1;
+  string call_id = 2;
+  string status = 3; // dialing, ringing, connected, completed, rejected, missed
+}
+
+message UpdateCallStatusResponse {
+  Call call = 1;
+}
+
+message ListCallHistoryRequest {
+  string app_id = 1;
+  string user_id = 2;
+  uint32 limit = 3;
+  string other_party_id = 4;
+}
+
+message ListCallHistoryResponse {
+  repeated CallHistoryRecord records = 1;
+}
+
+message CallHistoryRecord {
+  string id = 1;
+  string app_id = 2;
+  string user_id = 3;
+  string other_party_id = 4;
+  string direction = 5;
+  string type = 6;
+  string status = 7;
+  uint32 duration_seconds = 8;
+  string started_at = 9;
+  string conversation_id = 10;
+  string group_id = 13;
+  string inserted_at = 11;
+  string updated_at = 12;
+}
+
+message DeleteCallHistoryRequest {
+  string app_id = 1;
+  string user_id = 2;
+  repeated string ids = 3;
+}
+
+message DeleteCallHistoryResponse {
+  uint32 count = 1;
 }

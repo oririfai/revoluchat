@@ -42,6 +42,13 @@ defmodule RevoluchatWeb.DashboardComponents do
             collapsed={@collapsed}
           />
           <.nav_item
+            href={~p"/admin/users"}
+            active={@active_tab == :users}
+            icon="hero-users"
+            text="Users"
+            collapsed={@collapsed}
+          />
+          <.nav_item
             href={~p"/admin/setting"}
             active={@active_tab == :setting}
             icon="hero-cog-6-tooth"
@@ -298,7 +305,7 @@ defmodule RevoluchatWeb.DashboardComponents do
       phx-mounted={@show && show_dashboard_modal(@id)}
       phx-remove={hide_dashboard_modal(@id)}
       data-cancel={JS.exec(@on_cancel, "phx-remove") |> hide_dashboard_modal(@id)}
-      class="relative z-[100] hidden"
+      class={["relative z-[100]", !@show && "hidden"]}
     >
       <div id={"#{@id}-bg"} class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" aria-hidden="true" />
       <div class="fixed inset-0 z-10 w-screen overflow-y-auto">

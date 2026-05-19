@@ -3,7 +3,7 @@ defmodule Revoluchat.Accounts.UserChat do
   import Ecto.Changeset
 
   schema "user_chats" do
-    field :user_id, :integer
+    field :user_id, :string
     field :chat_id, Ecto.UUID
     field :app_id, :string
     field :name, :string

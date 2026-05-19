@@ -28,8 +28,10 @@ defmodule Revoluchat.Storage.R2Adapter do
 
   @impl true
   def get_object(key) do
+    conf = config()
+    Logger.info("R2Adapter: get_object bucket=#{bucket()} key=#{key} host=#{conf.host} scheme=#{conf.scheme}")
     ExAws.S3.get_object(bucket(), key)
-    |> ExAws.request(config())
+    |> ExAws.request(conf)
   end
   
   def config do
@@ -57,7 +59,7 @@ defmodule Revoluchat.Storage.R2Adapter do
     
     # ExAws specifically expects the scheme to end with "://"
     Map.merge(config, %{
-      scheme: scheme <> "://",
+      scheme: scheme,
       host: uri.host, 
       port: uri.port || default_port,
       region: "auto",

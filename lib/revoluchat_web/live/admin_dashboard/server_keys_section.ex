@@ -5,7 +5,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.ServerKeysSection do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl space-y-8 pb-20">
+    <div class="w-full space-y-8 pb-20">
       <.card label="Generate New Server Key">
         <form phx-submit="create_server_key" class="flex gap-4 items-end">
           <div class="flex-1">
@@ -13,7 +13,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.ServerKeysSection do
             <input
               type="text"
               name="name"
-              placeholder="e.g. Phoenix to Go SDK"
+              placeholder="e.g. Production Server"
               required
               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
             />
@@ -37,16 +37,19 @@ defmodule RevoluchatWeb.AdminDashboardLive.ServerKeysSection do
               <%= for key <- @server_keys do %>
                 <tr>
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-b-0"><%= key.name %></td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 border-b-0">
-                    <code class="bg-gray-100 px-2 py-1 rounded text-xs select-all"><%= key.key %></code>
+                  <td class="px-6 py-4 text-sm text-gray-500 border-b-0">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-xs select-all break-all whitespace-normal block max-w-xs md:max-w-md font-mono"><%= key.key %></code>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap border-b-0">
-                    <span class={[
-                      "px-2 inline-flex text-xs leading-5 font-semibold rounded-full",
-                      if(key.status == "active", do: "bg-green-100 text-green-800", else: "bg-red-100 text-red-800")
-                    ]}>
-                      <%= key.status %>
-                    </span>
+                    <%= if key.status == "active" and @signer_count > 0 do %>
+                      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        active
+                      </span>
+                    <% else %>
+                      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                        inactive
+                      </span>
+                    <% end %>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium border-b-0 space-x-2">
                     <%= if key.status == "active" and @signer_count > 0 do %>
@@ -140,6 +143,33 @@ defmodule RevoluchatWeb.AdminDashboardLive.ServerKeysSection do
             </.revolu_button>
             <.revolu_button phx-click={hide_dashboard_modal("revoke-server-key-modal") |> JS.push("close_modal")} variant="white">
               Cancel
+            </.revolu_button>
+          </:footer>
+        </.modal>
+      <% end %>
+
+      <%= if @show_server_error_modal do %>
+        <.modal
+          id="server-error-modal"
+          show={@show_server_error_modal}
+          type="danger"
+          title="Connection Failed"
+          on_cancel={JS.push("close_modal")}
+        >
+          <div class="space-y-4">
+            <p><%= @server_error_message %></p>
+            <div class="bg-red-50 p-4 rounded-md text-sm text-red-800">
+              <p class="font-bold mb-1">Troubleshooting Tips:</p>
+              <ul class="list-disc ml-5 space-y-1">
+                <li>Pastikan <code>server tujuan</code> sudah berjalan.</li>
+                <li>Jika menggunakan Docker, gunakan <code>host.docker.internal</code> di <code>JWKS_URL</code>.</li>
+                <li>Cek apakah port <code>8181</code> sudah terbuka.</li>
+              </ul>
+            </div>
+          </div>
+          <:footer>
+            <.revolu_button phx-click="close_modal" variant="solid" class="bg-gray-800 hover:bg-gray-900">
+              Dismiss
             </.revolu_button>
           </:footer>
         </.modal>

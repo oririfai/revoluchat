@@ -12,7 +12,7 @@ query = import Ecto.Query
 existing =
   Repo.one(
     from(c in Conversation,
-      where: (c.user_a_id == 1 and c.user_b_id == 2) or (c.user_a_id == 2 and c.user_b_id == 1),
+      where: (c.user_a_id == "1" and c.user_b_id == "2") or (c.user_a_id == "2" and c.user_b_id == "1"),
       limit: 1
     )
   )
@@ -24,8 +24,8 @@ if existing do
 else
   {:ok, conv} =
     Repo.insert(%Conversation{
-      user_a_id: 1,
-      user_b_id: 2,
+      user_a_id: "1",
+      user_b_id: "2",
       last_activity_at: DateTime.utc_now()
     })
 

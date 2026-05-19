@@ -19,16 +19,8 @@ defmodule RevoluchatWeb.UserSocket do
       # Prioritize app_id from token claims, fallback to API Key app_id
       app_id = claims.app_id || api_key_app_id
       
-      # ENSURE user_id is integer for standard DB compatibility if it's numeric
-      user_id =
-        cond do
-          is_integer(user_id) -> user_id
-          is_binary(user_id) and Regex.match?(~r/^\d+$/, user_id) -> String.to_integer(user_id)
-          is_binary(user_id) and Regex.match?(~r/^\d+\.0$/, user_id) -> 
-            user_id |> String.replace(".0", "") |> String.to_integer()
-          is_float(user_id) -> trunc(user_id)
-          true -> user_id
-        end
+      # Keep user_id as string (UUID)
+      user_id = to_string(user_id)
 
       # AUTOMATIC REGISTRATION: 
       # Inisialisasi data pengguna dan registrasikan ke tabel user_chats jika belum ada
@@ -39,6 +31,8 @@ defmodule RevoluchatWeb.UserSocket do
             socket
             |> assign(:user_id, user_id)
             |> assign(:app_id, app_id)
+            |> assign(:token, token)
+            |> assign(:api_key, api_key)
 
           Logger.info("Socket connected: user_id=#{user_id}, app_id=#{app_id}")
           {:ok, socket}

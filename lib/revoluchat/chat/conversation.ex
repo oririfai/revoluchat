@@ -9,8 +9,8 @@ defmodule Revoluchat.Chat.Conversation do
     field :last_activity_at, :utc_datetime_usec
     field :app_id, :string
     # user_id adalah integer (uint dari MySQL user service)
-    field :user_a_id, :integer
-    field :user_b_id, :integer
+    field :user_a_id, :string
+    field :user_b_id, :string
 
     field :unread_count, :integer, virtual: true, default: 0
 
@@ -27,8 +27,6 @@ defmodule Revoluchat.Chat.Conversation do
     conversation
     |> cast(attrs, [:app_id, :user_a_id, :user_b_id])
     |> validate_required([:app_id, :user_a_id, :user_b_id])
-    |> validate_number(:user_a_id, greater_than: 0)
-    |> validate_number(:user_b_id, greater_than: 0)
     |> validate_different_users()
     |> unique_constraint([:user_a_id, :user_b_id],
       message: "conversation sudah ada"

@@ -19,6 +19,14 @@ defmodule Revoluchat.LiveKit.Token do
   * `participant_name` - Display name for the user
   """
   def generate(room, participant_id, participant_name) do
+    if Application.get_env(:revoluchat, :tier_type) != "advance" do
+      {:error, :not_supported_in_normal_tier}
+    else
+      do_generate(room, participant_id, participant_name)
+    end
+  end
+
+  defp do_generate(room, participant_id, participant_name) do
     config = Application.get_env(:revoluchat, :livekit, [])
     api_key = Keyword.get(config, :api_key, System.get_env("LIVEKIT_API_KEY") || "devkey")
     api_secret = Keyword.get(config, :api_secret, System.get_env("LIVEKIT_API_SECRET") || "secret")

@@ -3,7 +3,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.DocumentationSection do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl space-y-8 pb-20">
+    <div class="w-full space-y-8 pb-20">
       <.card label="API Authentication">
         <div class="prose prose-sm max-w-none text-gray-600">
           <p>Semua permintaan API memerlukan Header <code>Authorization</code> dengan format:</p>

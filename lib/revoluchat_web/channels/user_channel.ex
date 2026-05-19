@@ -26,19 +26,20 @@ defmodule RevoluchatWeb.UserChannel do
       if Calls.is_participant?(app_id, call_id, user_id) do
         case action do
           "accept" ->
-            case Calls.accept_call(call_id) do
+            case Calls.accept_call(app_id, call_id) do
               {:ok, call} ->
-                # Build payload
+                # Build identities and tokens
                 caller = Accounts.get_registered_user(app_id, call.caller_id)
-                receiver = Accounts.get_registered_user(app_id, call.receiver_id)
+                current_user_id = socket.assigns.user_id
+                receiver = Accounts.get_registered_user(app_id, current_user_id)
 
                 caller_name = if(caller && caller.name && caller.name != "", do: caller.name, else: (caller && caller.phone) || "User")
                 receiver_name = if(receiver && receiver.name && receiver.name != "", do: receiver.name, else: (receiver && receiver.phone) || "User")
 
-                # Generate LiveKit Tokens
+                # Generate LiveKit Tokens dynamically
                 livekit_url = Application.get_env(:revoluchat, :livekit)[:url] || System.get_env("LIVEKIT_URL") || "ws://localhost:7880"
                 {:ok, caller_token} = Revoluchat.LiveKit.Token.generate(call_id, call.caller_id, caller_name)
-                {:ok, receiver_token} = Revoluchat.LiveKit.Token.generate(call_id, call.receiver_id, receiver_name)
+                {:ok, current_token} = Revoluchat.LiveKit.Token.generate(call_id, current_user_id, receiver_name)
 
                 payload = %{
                   "call_id" => call_id,
@@ -46,19 +47,35 @@ defmodule RevoluchatWeb.UserChannel do
                   "status" => "connected",
                   "caller_id" => call.caller_id,
                   "caller_name" => caller_name,
-                  "receiver_id" => call.receiver_id,
+                  "receiver_id" => current_user_id,
                   "receiver_name" => receiver_name,
                   "livekit_url" => livekit_url,
                   "livekit_token_caller" => caller_token,
-                  "livekit_token_receiver" => receiver_token
+                  "livekit_token_receiver" => current_token,
+                  "is_group" => not is_nil(call.group_id)
                 }
 
-                # BROADCAST to ALL redundant paths
-                # Room topic
-                RevoluchatWeb.Endpoint.broadcast!("tenant:#{app_id}:room:#{call.conversation_id}", "call:accepted", payload)
+                # BROADCAST to correct Room/Group topic
+                target_topic = 
+                  cond do
+                    call.group_id && call.group_id != "" ->
+                      gid = if String.starts_with?(call.group_id, "group_"), do: call.group_id, else: "group_#{call.group_id}"
+                      "tenant:#{app_id}:group:#{gid}"
+                    true ->
+                      "tenant:#{app_id}:room:#{call.conversation_id}"
+                  end
+                RevoluchatWeb.Endpoint.broadcast!(target_topic, "call:accepted", payload)
+
                 # Private topics (Global)
                 RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:accepted", payload)
-                RevoluchatWeb.Endpoint.broadcast!("user:#{call.receiver_id}", "call:accepted", payload)
+                
+                # If 1-on-1, notify specific receiver channel
+                if is_nil(call.group_id) && call.receiver_id != 0 do
+                   RevoluchatWeb.Endpoint.broadcast!("user:#{call.receiver_id}", "call:accepted", payload)
+                end
+
+                # Explicitly push to the current responder's socket to ensure they get it
+                push(socket, "call:accepted", payload)
 
                 {:reply, :ok, socket}
 
@@ -68,11 +85,19 @@ defmodule RevoluchatWeb.UserChannel do
             end
 
           "reject" ->
-            case Calls.reject_call(call_id) do
+            case Calls.reject_call(app_id, call_id) do
               {:ok, call} ->
                 payload = %{ "call_id" => call_id, "status" => "rejected", "type" => call.type }
-                # Broadcast to Room and Participants
-                RevoluchatWeb.Endpoint.broadcast!("tenant:#{app_id}:room:#{call.conversation_id}", "call:rejected", payload)
+                # Broadcast to correct Room/Group topic
+                target_topic = 
+                  cond do
+                    call.group_id && call.group_id != "" ->
+                      gid = if String.starts_with?(call.group_id, "group_"), do: call.group_id, else: "group_#{call.group_id}"
+                      "tenant:#{app_id}:group:#{gid}"
+                    true ->
+                      "tenant:#{app_id}:room:#{call.conversation_id}"
+                  end
+                RevoluchatWeb.Endpoint.broadcast!(target_topic, "call:rejected", payload)
                 RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:rejected", payload)
                 
                 # Insert summary bubble
@@ -93,72 +118,261 @@ defmodule RevoluchatWeb.UserChannel do
     end
   end
 
-  def handle_in("call:hangup", %{"call_id" => call_id}, socket) do
+  def handle_in("call:hangup", %{"call_id" => call_id} = params, socket) do
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
+    Logger.info("UserChannel: Received call:hangup for call #{call_id} from user #{user_id} (App: #{app_id})")
+    
     try do
-      if Calls.is_participant?(app_id, call_id, user_id) do
-        case Calls.complete_call(call_id) do
-          {:ok, call} ->
-            payload = %{"call_id" => call_id, "status" => call.status, "type" => call.type}
-            # Broadcast to Room and Participants
-            RevoluchatWeb.Endpoint.broadcast!("tenant:#{app_id}:room:#{call.conversation_id}", "call:hangup", payload)
-            RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:hangup", payload)
-            RevoluchatWeb.Endpoint.broadcast!("user:#{call.receiver_id}", "call:hangup", payload)
-
-            # Insert summary bubble
-            insert_call_summary(call)
-            
-            {:reply, :ok, socket}
-          _error ->
-            {:reply, {:error, %{reason: "failed_to_hangup"}}, socket}
+      is_pending = String.starts_with?(call_id, "pending-")
+      
+      if is_pending do
+        conversation_id = Map.get(params, "conversation_id")
+        Logger.info("UserChannel: Handling pending call hangup for conversation #{conversation_id}")
+        
+        if conversation_id do
+          is_group = String.starts_with?(conversation_id, "group_")
+          
+          # Broadcast to room/group topic
+          room_topic = if is_group, do: "tenant:#{app_id}:group:#{conversation_id}", else: "tenant:#{app_id}:room:#{conversation_id}"
+          payload = %{"call_id" => call_id, "status" => "canceled", "conversation_id" => conversation_id}
+          RevoluchatWeb.Endpoint.broadcast(room_topic, "call:hangup", payload)
+          
+          # Notify participants
+          if is_group do
+            case Chat.get_group(app_id, conversation_id) do
+              {:ok, group} ->
+                Enum.each(group.members, fn member ->
+                  RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "call:hangup", payload)
+                end)
+              _ -> :ok
+            end
+          else
+            case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
+              {:ok, conv} ->
+                RevoluchatWeb.Endpoint.broadcast("user:#{conv.user_a_id}", "call:hangup", payload)
+                RevoluchatWeb.Endpoint.broadcast("user:#{conv.user_b_id}", "call:hangup", payload)
+              _ -> :ok
+            end
+          end
         end
+        {:reply, :ok, socket}
       else
-        {:reply, {:error, %{reason: "unauthorized"}}, socket}
+        if Calls.is_participant?(app_id, call_id, user_id) do
+          case Calls.complete_call(app_id, call_id) do
+            {:ok, call} ->
+              payload = %{"call_id" => call_id, "status" => call.status, "type" => call.type, "conversation_id" => call.conversation_id}
+              # Broadcast to correct Room/Group topic (Ensuring group_ prefix for groups)
+              target_topic = 
+                cond do
+                  call.group_id && call.group_id != "" ->
+                    gid = if String.starts_with?(call.group_id, "group_"), do: call.group_id, else: "group_#{call.group_id}"
+                    "tenant:#{app_id}:group:#{gid}"
+                  true ->
+                    "tenant:#{app_id}:room:#{call.conversation_id}"
+                end
+              RevoluchatWeb.Endpoint.broadcast!(target_topic, "call:hangup", payload)
+              
+              # Global signaling for all participants
+              Logger.info("UserChannel: Broadcasting call:hangup for call #{call_id} to global topics. Caller: #{call.caller_id}, Receiver: #{call.receiver_id}")
+              
+              is_group = call.group_id && call.group_id != ""
+              if is_group do
+                case Chat.get_group(app_id, call.group_id) do
+                  {:ok, group} ->
+                    Enum.each(group.members, fn member ->
+                      topic = "user:#{member.user_id}"
+                      Logger.info("UserChannel: Broadcasting hangup to group member topic: #{topic}")
+                      RevoluchatWeb.Endpoint.broadcast(topic, "call:hangup", payload)
+                    end)
+                  _ -> 
+                    Logger.warning("UserChannel: Group #{call.group_id} not found for signaling")
+                    :ok
+                end
+              else
+                caller_topic = "user:#{call.caller_id}"
+                receiver_topic = "user:#{call.receiver_id}"
+                
+                Logger.info("UserChannel: Broadcasting hangup to private topics: #{caller_topic} and #{receiver_topic}")
+                RevoluchatWeb.Endpoint.broadcast!(caller_topic, "call:hangup", payload)
+                if call.receiver_id && call.receiver_id != 0 do
+                  RevoluchatWeb.Endpoint.broadcast!(receiver_topic, "call:hangup", payload)
+                end
+              end
+
+              # Insert summary bubble
+              insert_call_summary(call, socket)
+              {:reply, :ok, socket}
+
+            {:error, reason} ->
+              Logger.error("UserChannel: complete_call failed for call #{call_id}: #{inspect(reason)}")
+              {:reply, {:error, %{reason: reason}}, socket}
+            
+            other ->
+              Logger.error("UserChannel: complete_call returned unexpected result: #{inspect(other)}")
+              {:reply, {:error, %{reason: "unexpected_error"}}, socket}
+          end
+        else
+          Logger.warning("UserChannel: User #{user_id} is not a participant of call #{call_id}")
+          {:reply, {:error, %{reason: "unauthorized"}}, socket}
+        end
       end
     rescue
-      _ -> {:reply, {:error, %{reason: "internal_error"}}, socket}
+      e ->
+        Logger.error("UserChannel: CRASH in call:hangup: #{inspect(e)}")
+        Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
+        {:reply, {:error, %{reason: "internal_error"}}, socket}
     end
   end
 
-  def handle_in("call:cancel", %{"call_id" => call_id}, socket) do
+  def handle_in("call:cancel", %{"call_id" => call_id} = params, socket) do
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
-    try do
-      if Calls.is_participant?(app_id, call_id, user_id) do
-        case Calls.cancel_call(call_id) do
-          {:ok, call} ->
-            payload = %{"call_id" => call_id, "status" => "missed", "type" => call.type}
-            # Broadcast to Room and Participants
-            RevoluchatWeb.Endpoint.broadcast!("tenant:#{app_id}:room:#{call.conversation_id}", "call:cancel", payload)
-            RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:cancel", payload)
-            RevoluchatWeb.Endpoint.broadcast!("user:#{call.receiver_id}", "call:cancel", payload)
+    Logger.info("UserChannel: Received call:cancel for call #{call_id} from user #{user_id} (App: #{app_id})")
 
-            # Insert summary bubble
-            insert_call_summary(call)
-            
-            {:reply, :ok, socket}
-          _error ->
-            {:reply, {:error, %{reason: "failed_to_cancel"}}, socket}
+    try do
+      is_pending = String.starts_with?(call_id, "pending-")
+      
+      if is_pending do
+        conversation_id = Map.get(params, "conversation_id")
+        Logger.info("UserChannel: Handling pending call cancel for conversation #{conversation_id}")
+        
+        if conversation_id do
+          is_group = String.starts_with?(conversation_id, "group_")
+          
+          # Broadcast to room/group topic
+          room_topic = if is_group, do: "tenant:#{app_id}:group:#{conversation_id}", else: "tenant:#{app_id}:room:#{conversation_id}"
+          payload = %{"call_id" => call_id, "status" => "canceled", "conversation_id" => conversation_id}
+          RevoluchatWeb.Endpoint.broadcast(room_topic, "call:cancel", payload)
+          
+          # Notify participants
+          if is_group do
+            case Chat.get_group(app_id, conversation_id) do
+              {:ok, group} ->
+                Enum.each(group.members, fn member ->
+                  RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "call:cancel", payload)
+                end)
+              _ -> :ok
+            end
+          else
+            case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
+              {:ok, conv} ->
+                RevoluchatWeb.Endpoint.broadcast("user:#{conv.user_a_id}", "call:cancel", payload)
+                RevoluchatWeb.Endpoint.broadcast("user:#{conv.user_b_id}", "call:cancel", payload)
+              _ -> :ok
+            end
+          end
         end
+        {:reply, :ok, socket}
       else
-        {:reply, {:error, %{reason: "unauthorized"}}, socket}
+        if Calls.is_participant?(app_id, call_id, user_id) do
+          case Calls.cancel_call(app_id, call_id) do
+            {:ok, call} ->
+              payload = %{"call_id" => call_id, "status" => "canceled", "type" => call.type, "conversation_id" => call.conversation_id}
+              # Broadcast to correct Room/Group topic (Ensuring group_ prefix for groups)
+              target_topic = 
+                cond do
+                  call.group_id && call.group_id != "" ->
+                    gid = if String.starts_with?(call.group_id, "group_"), do: call.group_id, else: "group_#{call.group_id}"
+                    "tenant:#{app_id}:group:#{gid}"
+                  true ->
+                    "tenant:#{app_id}:room:#{call.conversation_id}"
+                end
+              RevoluchatWeb.Endpoint.broadcast!(target_topic, "call:cancel", payload)
+              
+              # Global signaling for all participants
+              Logger.info("UserChannel: Broadcasting call:cancel to global topics for call #{call_id}")
+              
+              is_group = call.group_id && call.group_id != ""
+              
+              if is_group do
+                case Chat.get_group(app_id, call.group_id) do
+                  {:ok, group} ->
+                    Enum.each(group.members, fn member ->
+                      topic = "user:#{member.user_id}"
+                      Logger.info("UserChannel: Broadcasting cancel to group member topic: #{topic}")
+                      RevoluchatWeb.Endpoint.broadcast(topic, "call:cancel", payload)
+                    end)
+                  _ -> :ok
+                end
+              else
+                caller_topic = "user:#{call.caller_id}"
+                receiver_topic = "user:#{call.receiver_id}"
+                
+                Logger.info("UserChannel: Broadcasting cancel to private topics: #{caller_topic} and #{receiver_topic}")
+                RevoluchatWeb.Endpoint.broadcast!(caller_topic, "call:cancel", payload)
+                if call.receiver_id && call.receiver_id != 0 do
+                  RevoluchatWeb.Endpoint.broadcast!(receiver_topic, "call:cancel", payload)
+                end
+              end
+
+              # Insert summary bubble
+              insert_call_summary(call, socket)
+              {:reply, :ok, socket}
+
+            {:error, reason} ->
+              Logger.error("UserChannel: cancel_call failed for call #{call_id}: #{inspect(reason)}")
+              {:reply, {:error, %{reason: reason}}, socket}
+          end
+        else
+          Logger.warning("UserChannel: User #{user_id} is not a participant of call #{call_id} (cancel)")
+          {:reply, {:error, %{reason: "unauthorized"}}, socket}
+        end
       end
     rescue
-      _ -> {:reply, {:error, %{reason: "internal_error"}}, socket}
+      e ->
+        Logger.error("UserChannel: CRASH in call:cancel: #{inspect(e)}")
+        Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
+        {:reply, {:error, %{reason: "internal_error"}}, socket}
     end
   end
 
+
+  def handle_in("call:request", %{"type" => call_type} = params, socket) do
+    user_id = socket.assigns.user_id
+    app_id = socket.assigns.app_id
+    conversation_id = params["conversation_id"]
+    group_id = params["group_id"]
+    receiver_id = params["receiver_id"]
+
+    Logger.info("UserChannel: call:request from #{user_id}. Type: #{call_type}, Conv: #{conversation_id}, Group: #{group_id}, Receiver: #{receiver_id}")
+
+    # Security & Context Resolution
+    case {conversation_id, group_id} do
+      {conv_id, _} when is_binary(conv_id) and conv_id != "" ->
+        # 1-on-1 Call
+        case Chat.get_conversation_for_user(app_id, conv_id, user_id) do
+          {:ok, conversation} ->
+            # Automatically identify receiver if not provided by SDK
+            receiver_id = receiver_id || (if to_string(conversation.user_a_id) == to_string(user_id), do: conversation.user_b_id, else: conversation.user_a_id)
+            initiate_and_broadcast_call(app_id, conv_id, nil, user_id, receiver_id, call_type, socket)
+          _ ->
+            {:reply, {:error, %{reason: "unauthorized"}}, socket}
+        end
+
+      {_, gid} when is_binary(gid) and gid != "" ->
+        # Group Call
+        case Chat.get_group(app_id, gid) do
+          {:ok, _group} ->
+             initiate_and_broadcast_call(app_id, nil, gid, user_id, nil, call_type, socket)
+          _ ->
+            {:reply, {:error, %{reason: "group_not_found"}}, socket}
+        end
+
+      _ ->
+        {:reply, {:error, %{reason: "invalid_context"}}, socket}
+    end
+  end
 
   def handle_in("call:ringing", %{"call_id" => call_id}, socket) do
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
     try do
       if Calls.is_participant?(app_id, call_id, user_id) do
-        case Calls.get_call(call_id) do
+        case Calls.get_call(app_id, call_id) do
           {:ok, call} ->
             # Update state in DB
-            Calls.set_ringing(call_id)
+            Calls.set_ringing(app_id, call_id)
             
             # Notify the caller specifically
             RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:ringing", %{"call_id" => call_id, "type" => call.type})
@@ -183,8 +397,8 @@ defmodule RevoluchatWeb.UserChannel do
     case Chat.insert_message(payload) do
       {:ok, message, attachments} ->
         # Broadcast the new bubble to the chat room topic
-        room_topic = "tenant:#{call.app_id}:room:#{call.conversation_id}"
-        RevoluchatWeb.Endpoint.broadcast!(room_topic, "new_message", format_message(message, attachments))
+        target_topic = if call.group_id, do: "tenant:#{call.app_id}:group:#{call.group_id}", else: "tenant:#{call.app_id}:room:#{call.conversation_id}"
+        RevoluchatWeb.Endpoint.broadcast!(target_topic, "new_message", format_message(message, attachments))
 
       _ ->
         Logger.error("UserChannel: Failed to insert call summary message for Call #{call.id}")
@@ -219,7 +433,7 @@ defmodule RevoluchatWeb.UserChannel do
   defp format_attachment(att) do
     %{
       id: att.id,
-      url: "/api/v1/attachments/#{att.id}/show",
+      url: "/api/a/v1/attachments/#{att.id}/show",
       mime_type: att.mime_type,
       size: att.size,
       metadata: att.metadata
@@ -229,4 +443,209 @@ defmodule RevoluchatWeb.UserChannel do
   defp format_dt(nil), do: nil
   defp format_dt(dt), do: DateTime.to_iso8601(dt)
 
+  def handle_in("call:upgrade_request", %{"call_id" => call_id, "type" => type}, socket) do
+    user_id = socket.assigns.user_id
+    app_id = socket.assigns.app_id
+    Logger.info("UserChannel: Received call:upgrade_request to #{type} for call #{call_id} from user #{user_id}")
+    
+    if Calls.is_participant?(app_id, call_id, user_id) do
+      case Calls.get_call(app_id, call_id) do
+        nil -> 
+          Logger.error("UserChannel: upgrade_request failed - call #{call_id} not found")
+          {:reply, {:error, %{reason: "not_found"}}, socket}
+        call ->
+          payload = %{"call_id" => call_id, "type" => type, "from_id" => user_id}
+          # Broadcast to other party
+          target_id = if to_string(call.caller_id) == to_string(user_id), do: call.receiver_id, else: call.caller_id
+          if target_id && target_id != 0 do
+            Logger.info("UserChannel: Broadcasting upgrade_request to user:#{target_id}")
+            RevoluchatWeb.Endpoint.broadcast("user:#{target_id}", "call:upgrade_request", payload)
+          end
+          {:reply, :ok, socket}
+      end
+    else
+      Logger.warning("UserChannel: Unauthorized upgrade_request from user #{user_id} for call #{call_id}")
+      {:reply, {:error, %{reason: "unauthorized"}}, socket}
+    end
+  end
+
+  def handle_in("call:upgrade_response", %{"call_id" => call_id, "accepted" => accepted, "type" => type}, socket) do
+     user_id = socket.assigns.user_id
+     app_id = socket.assigns.app_id
+     Logger.info("UserChannel: Received call:upgrade_response (accepted: #{accepted}) for call #{call_id} from user #{user_id}")
+
+     if Calls.is_participant?(app_id, call_id, user_id) do
+        case Calls.get_call(app_id, call_id) do
+          nil -> 
+            Logger.error("UserChannel: upgrade_response failed - call #{call_id} not found")
+            {:reply, {:error, %{reason: "not_found"}}, socket}
+          call ->
+            payload = %{"call_id" => call_id, "accepted" => accepted, "type" => type, "responder_id" => user_id}
+            # Broadcast to other party (the requester)
+            target_id = if to_string(call.caller_id) == to_string(user_id), do: call.receiver_id, else: call.caller_id
+            if target_id && target_id != 0 do
+              Logger.info("UserChannel: Broadcasting upgrade_response to user:#{target_id}")
+              RevoluchatWeb.Endpoint.broadcast("user:#{target_id}", "call:upgrade_response", payload)
+            end
+            
+            {:reply, :ok, socket}
+        end
+     else
+        Logger.warning("UserChannel: Unauthorized upgrade_response from user #{user_id} for call #{call_id}")
+        {:reply, {:error, %{reason: "unauthorized"}}, socket}
+      end
+   end
+
+   @impl true
+   def handle_in(event, payload, socket) do
+     user_id = socket.assigns.user_id
+     Logger.info("UserChannel: Received unhandled event '#{event}' from user #{user_id}. Payload: #{inspect(payload)}")
+     {:noreply, socket}
+   end
+
+  defp insert_call_summary(call, socket) do
+    payload = Calls.generate_summary_payload(call)
+    app_id = socket.assigns.app_id
+
+    case Chat.insert_message(payload) do
+      {:ok, message, attachments} ->
+        # Broadcast to all participants via their User Channels
+        msg_payload = format_message(message, attachments, socket)
+        
+        # 1. Broadcast to Room
+        target_topic = 
+          cond do
+            call.group_id && call.group_id != "" ->
+              gid = if String.starts_with?(call.group_id, "group_"), do: call.group_id, else: "group_#{call.group_id}"
+              "tenant:#{app_id}:group:#{gid}"
+            true ->
+              "tenant:#{app_id}:room:#{call.conversation_id}"
+          end
+        RevoluchatWeb.Endpoint.broadcast(target_topic, "new_message", msg_payload)
+
+        # 2. Broadcast to participants
+        is_group = call.group_id && call.group_id != ""
+        if is_group do
+           case Chat.get_group(app_id, call.group_id) do
+              {:ok, group} ->
+                Enum.each(group.members, fn member ->
+                   RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "new_message", msg_payload)
+                end)
+              _ -> :ok
+           end
+        else
+           RevoluchatWeb.Endpoint.broadcast("user:#{call.caller_id}", "new_message", msg_payload)
+           if call.receiver_id && call.receiver_id != 0, do: RevoluchatWeb.Endpoint.broadcast("user:#{call.receiver_id}", "new_message", msg_payload)
+        end
+
+      _ ->
+        Logger.error("UserChannel: Failed to insert call summary message for Call #{call.id}")
+    end
+  end
+
+  # Helper to format message for broadcast (copied from ChatChannel logic)
+  defp format_message(message, attachments, _socket) do
+    %{
+      id: message.id,
+      conversation_id: message.conversation_id,
+      group_id: message.group_id,
+      sender_id: message.sender_id,
+      type: message.type,
+      body: message.body,
+      is_encrypted: message.is_encrypted,
+      client_id: message.client_id,
+      inserted_at: format_dt(message.inserted_at),
+      attachments: Enum.map(attachments, &normalize_attachment/1)
+    }
+  end
+
+  defp normalize_attachment(att) do
+    %{
+      id: att.id,
+      uploader_id: att.uploader_id,
+      storage_key: att.storage_key,
+      mime_type: att.mime_type,
+      size: att.size,
+      status: att.status,
+      metadata: att.metadata
+    }
+  end
+  defp initiate_and_broadcast_call(app_id, conversation_id, group_id, user_id, receiver_id, call_type, socket) do
+    case Calls.initiate_call(app_id, conversation_id, user_id, receiver_id, call_type, group_id) do
+      {:ok, call, caller_identity} ->
+        # Enrichment from local DB if remote identity is generic
+        caller_identity = 
+          case Accounts.get_registered_user(app_id, user_id) do
+            nil -> caller_identity
+            u -> %{name: u.name || u.phone, photo: u.avatar_url, phone: u.phone}
+          end
+
+        payload = %{
+          "call_id" => call.id,
+          "type" => call_type,
+          "caller_id" => user_id,
+          "caller_name" => caller_identity.name,
+          "caller_photo" => caller_identity.photo,
+          "phone_number" => caller_identity.phone,
+          "conversation_id" => conversation_id,
+          "group_id" => group_id
+        }
+
+        # Enrich group info if present
+        payload = if group_id do
+          case Chat.get_group(app_id, group_id) do
+            {:ok, g} -> 
+              Map.merge(payload, %{
+                "group_name" => g.name,
+                "group_photo" => g.avatar_url
+              })
+            _ -> payload
+          end
+        else
+          payload
+        end
+
+        # 1. Broadcast to Room/Group Topic
+        room_topic = 
+          cond do
+            group_id -> "tenant:#{app_id}:group:#{group_id}"
+            true -> "tenant:#{app_id}:room:#{conversation_id}"
+          end
+        RevoluchatWeb.Endpoint.broadcast(room_topic, "call:incoming", payload)
+
+        # 2. Global signaling
+        cond do
+          !is_nil(receiver_id) ->
+            # 1-on-1: Notify specific receiver
+            RevoluchatWeb.Endpoint.broadcast("user:#{receiver_id}", "call:incoming", payload)
+            # Push notification if receiver is offline
+            handle_offline_call_push(app_id, conversation_id, receiver_id, payload)
+
+          !is_nil(group_id) ->
+            # Group Call (Advance Tier): Notify all members globally
+            case Chat.get_group(app_id, group_id) do
+              {:ok, group} ->
+                Enum.each(group.members, fn member ->
+                  if to_string(member.user_id) != to_string(user_id) do
+                    RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "call:incoming", payload)
+                  end
+                end)
+              _ -> :ok
+            end
+
+          true -> :ok
+        end
+
+        {:reply, {:ok, %{call_id: call.id}}, socket}
+
+      {:error, reason} ->
+        Logger.error("UserChannel: initiate_call failed: #{inspect(reason)}")
+        {:reply, {:error, %{reason: reason}}, socket}
+    end
+  end
+
+  defp handle_offline_call_push(_app_id, _conversation_id, _receiver_id, _payload) do
+    # Placeholder for FCM/Push logic
+    :ok
+  end
 end

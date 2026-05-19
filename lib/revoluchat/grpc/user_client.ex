@@ -3,7 +3,86 @@ defmodule Revoluchat.Grpc.UserClient do
   gRPC Client for fetching user data from User Service.
   """
 
-  alias User.V1.{GetUserRequest, UserService.Stub}
+  alias User.V1.{
+    GetUserRequest, 
+    SearchUserByPhoneRequest, 
+    AddContactRequest, 
+    ListContactsRequest, 
+    RemoveContactRequest,
+    UserService.Stub
+  }
+
+  @doc """
+  Search user by phone number (Advance Tier).
+  """
+  def search_user_by_phone(app_id, phone) do
+    endpoint = System.get_env("USER_SERVICE_GRPC_ENDPOINT", "localhost:50051")
+    request = %SearchUserByPhoneRequest{app_id: app_id, phone: phone}
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(endpoint) do
+      {:ok, channel} ->
+        case Stub.search_user_by_phone(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Add contact (Advance Tier).
+  """
+  def add_contact(app_id, owner_id, contact_id) do
+    endpoint = System.get_env("USER_SERVICE_GRPC_ENDPOINT", "localhost:50051")
+    request = %AddContactRequest{app_id: app_id, owner_id: owner_id, contact_id: contact_id}
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(endpoint) do
+      {:ok, channel} ->
+        case Stub.add_contact(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  List contacts (Advance Tier).
+  """
+  def list_contacts(app_id, user_id) do
+    endpoint = System.get_env("USER_SERVICE_GRPC_ENDPOINT", "localhost:50051")
+    request = %ListContactsRequest{app_id: app_id, user_id: user_id}
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(endpoint) do
+      {:ok, channel} ->
+        case Stub.list_contacts(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response.contacts}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Remove contact (Advance Tier).
+  """
+  def remove_contact(app_id, owner_id, contact_id) do
+    endpoint = System.get_env("USER_SERVICE_GRPC_ENDPOINT", "localhost:50051")
+    request = %RemoveContactRequest{app_id: app_id, owner_id: owner_id, contact_id: contact_id}
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(endpoint) do
+      {:ok, channel} ->
+        case Stub.remove_contact(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   @doc """
   Fetch user details by ID.
@@ -14,20 +93,22 @@ defmodule Revoluchat.Grpc.UserClient do
     endpoint = System.get_env("USER_SERVICE_GRPC_ENDPOINT", "localhost:50051")
     Logger.debug("[gRPC] Connecting to User Service at #{endpoint}")
     
-    # Ensure id is an integer for Protobuf uint64
+    # Ensure id is a string
     id =
       case user_id do
-        id when is_binary(id) -> String.to_integer(id)
-        id when is_integer(id) -> id
-        _ -> 0
+        id when is_binary(id) -> id
+        id when is_integer(id) -> Integer.to_string(id)
+        _ -> ""
       end
 
     request = %GetUserRequest{id: id}
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
 
     case GRPC.Stub.connect(endpoint) do
       {:ok, channel} ->
-        case Stub.get_user(channel, request) do
+        case Stub.get_user(channel, request, metadata: metadata) do
           {:ok, response} ->
+            Logger.info("[gRPC] Success fetching user #{id}: #{inspect(response)}")
             {:ok, parse_response(response)}
 
           {:error, %{status: 5}} -> # NOT_FOUND

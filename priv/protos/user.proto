@@ -2,22 +2,68 @@ syntax = "proto3";
 
 package user.v1;
 
-option go_package = "github.com/revolu/revoluchat-go-sdk/proto/user_v1";
-
 service UserService {
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  
+  // Contact Management (Advance Tier)
+  rpc SearchUserByPhone (SearchUserByPhoneRequest) returns (UserResponse);
+  rpc AddContact (AddContactRequest) returns (ActionResponse);
+  rpc ListContacts (ListContactsRequest) returns (ListContactsResponse);
+  rpc RemoveContact (RemoveContactRequest) returns (ActionResponse);
 }
 
 message GetUserRequest {
-  uint64 id = 1;
+  string id = 1; // UUID
+  string app_id = 2;
 }
 
 message GetUserResponse {
-  uint64 id = 1;
+  string id = 1;
   string uuid = 2;
   string name = 3;
   string phone = 4;
   string status = 5;
   bool is_kyc = 6;
   string avatar_url = 7;
+}
+
+message SearchUserByPhoneRequest {
+  string app_id = 1;
+  string phone = 2;
+}
+
+message UserResponse {
+  string id = 1; // UUID
+  string phone_number = 2;
+  string full_name = 3;
+  string profile_photo = 4;
+  string description = 5;
+  string birth_date = 6;
+  bool is_active = 7;
+}
+
+message AddContactRequest {
+  string app_id = 1;
+  string owner_id = 2;   // UUID pengirim
+  string contact_id = 3; // UUID target
+}
+
+message ListContactsRequest {
+  string app_id = 1;
+  string user_id = 2; // UUID
+}
+
+message ListContactsResponse {
+  repeated UserResponse contacts = 1;
+}
+
+message RemoveContactRequest {
+  string app_id = 1;
+  string owner_id = 2;
+  string contact_id = 3;
+}
+
+message ActionResponse {
+  bool success = 1;
+  string message = 2;
 }

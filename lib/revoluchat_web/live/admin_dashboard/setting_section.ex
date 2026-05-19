@@ -3,7 +3,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.SettingSection do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl space-y-8">
+    <div class="w-full space-y-8">
        <.card label="Node Configuration">
           <div class="space-y-6">
              <div>

@@ -15,7 +15,7 @@ defmodule RevoluchatWeb.MessageController do
 
     with {:ok, _conv} <- Chat.get_conversation_for_user(app_id, conv_id, user_id) do
       messages =
-        Chat.list_messages(app_id, conv_id, limit: limit, before_id: before_id, search: search)
+        Chat.list_messages(app_id, conv_id, user_id, limit: limit, before_id: before_id, search: search)
 
       # Fetch user details (senders) from local cache
       sender_ids = messages |> Enum.map(& &1.sender_id) |> Enum.uniq()
@@ -23,7 +23,6 @@ defmodule RevoluchatWeb.MessageController do
       users_map = Map.new(users_data, fn u -> {u.id, u} end)
 
       # Bulk fetch attachments to avoid N+1
-      import Ecto.Query
 
       all_attachment_ids =
         messages
@@ -34,8 +33,7 @@ defmodule RevoluchatWeb.MessageController do
 
       attachments_map =
         if all_attachment_ids != [] do
-          from(a in Chat.Attachment, where: a.id in ^all_attachment_ids)
-          |> Revoluchat.Repo.all()
+          Chat.list_attachments_by_ids(app_id, all_attachment_ids)
           |> Map.new(fn a -> {a.id, a} end)
         else
           %{}
@@ -50,11 +48,7 @@ defmodule RevoluchatWeb.MessageController do
 
       reply_messages_map =
         if reply_to_ids != [] do
-          from(msg in Chat.Message,
-            where: msg.id in ^reply_to_ids,
-            preload: [:attachment]
-          )
-          |> Revoluchat.Repo.all()
+          Chat.list_messages_by_ids(app_id, reply_to_ids)
           |> Map.new(fn msg -> {msg.id, msg} end)
         else
           %{}
@@ -70,7 +64,7 @@ defmodule RevoluchatWeb.MessageController do
               |> Enum.reject(&is_nil/1)
               |> Enum.uniq_by(& &1.id)
 
-            format_message(m, users_map, m_atts, reply_messages_map)
+            format_message(m, users_map, m_atts, reply_messages_map, conn)
           end),
         has_more: length(messages) == limit,
         next_cursor: List.last(messages) && List.last(messages).id
@@ -112,14 +106,14 @@ defmodule RevoluchatWeb.MessageController do
 
         conn
         |> put_status(:created)
-        |> json(%{message: format_message(message, users_map, attachments)})
+        |> json(%{message: format_message(message, users_map, attachments, %{}, conn)})
       end
     end
   end
 
   # ─── Private ─────────────────────────────────────────────────────────────────
 
-  defp format_message(m, users_map, attachments \\ nil, reply_messages_map \\ %{}) do
+  defp format_message(m, users_map, attachments, reply_messages_map, conn) do
     status =
       cond do
         not is_nil(m.read_at) -> "read"
@@ -127,7 +121,6 @@ defmodule RevoluchatWeb.MessageController do
         true -> "sent"
       end
 
-    import Ecto.Query
 
     # Fetch all attachments from attachment_ids if preloaded didn't happen
     attachments_list =
@@ -139,9 +132,7 @@ defmodule RevoluchatWeb.MessageController do
           [m.attachment]
 
         is_list(m.attachment_ids) and m.attachment_ids != [] ->
-          Revoluchat.Repo.all(
-            from(a in Revoluchat.Chat.Attachment, where: a.id in ^m.attachment_ids)
-          )
+          Chat.list_attachments_by_ids(m.app_id, m.attachment_ids)
 
         true ->
           []
@@ -162,6 +153,9 @@ defmodule RevoluchatWeb.MessageController do
           }
       end
 
+    inserted_at = Map.get(m, :inserted_at) || Map.get(m, :created_at) || Map.get(m, :sent_at)
+    updated_at = Map.get(m, :updated_at) || inserted_at
+
     %{
       id: m.id,
       type: m.type,
@@ -170,34 +164,45 @@ defmodule RevoluchatWeb.MessageController do
       sender_id: m.sender_id,
       user: Map.get(users_map, m.sender_id) |> format_user(),
       conversation_id: m.conversation_id,
-      attachment_id: m.attachment_id,
-      attachment: attachments_list |> List.first() |> format_attachment(),
-      attachments: Enum.map(attachments_list, &format_attachment/1),
+      attachment_id: Map.get(m, :attachment_id),
+      attachment: attachments_list |> List.first() |> format_attachment(conn),
+      attachments: Enum.map(attachments_list, fn a -> format_attachment(a, conn) end),
       reply_to_id: m.reply_to_id,
       reply_to: reply_to,
       client_id: m.client_id,
-      delivered_at: format_dt(m.delivered_at),
-      read_at: format_dt(m.read_at),
-      updated_at: format_dt(m.updated_at),
-      deleted_at: format_dt(m.deleted_at),
-      inserted_at: format_dt(m.inserted_at)
+      delivered_at: format_dt(Map.get(m, :delivered_at)),
+      read_at: format_dt(Map.get(m, :read_at)),
+      updated_at: format_dt(updated_at),
+      deleted_at: format_dt(Map.get(m, :deleted_at)),
+      inserted_at: format_dt(inserted_at)
     }
   end
 
-  defp format_attachment(%Ecto.Association.NotLoaded{}), do: nil
-  defp format_attachment(nil), do: nil
+  defp format_attachment(%Ecto.Association.NotLoaded{}, _conn), do: nil
+  defp format_attachment(nil, _conn), do: nil
 
-  defp format_attachment(att) do
-    url =
-      case Revoluchat.Storage.presigned_get_url(att.storage_key) do
-        {:ok, url} -> url
-        _ -> nil
+  defp format_attachment(att, conn) do
+    # Generate full authenticated proxy URL
+    base_url = RevoluchatWeb.Endpoint.url()
+    _token = conn.assigns.token
+    _api_key = conn.assigns.api_key
+    
+    url = "#{base_url}/api/a/v1/attachments/#{att.id}/show"
+
+    type = 
+      cond do
+        String.starts_with?(att.mime_type || "", "image/") -> "image"
+        String.starts_with?(att.mime_type || "", "video/") -> "video"
+        String.starts_with?(att.mime_type || "", "audio/") -> "audio"
+        true -> "file"
       end
 
     %{
       id: att.id,
       url: url,
       mime_type: att.mime_type,
+      type: type,
+      filename: Map.get(att.metadata || %{}, "filename") || "file",
       size: att.size,
       metadata: att.metadata
     }

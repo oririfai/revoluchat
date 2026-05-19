@@ -5,7 +5,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.ApiKeysSection do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl space-y-8 pb-20">
+    <div class="w-full space-y-8 pb-20">
       <.card label="Generate New API Key">
         <form phx-submit="create_api_key" class="flex gap-4 items-end">
           <div class="flex-1">
@@ -41,8 +41,8 @@ defmodule RevoluchatWeb.AdminDashboardLive.ApiKeysSection do
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-b-0">
                     <code class="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs"><%= key.app_id %></code>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 border-b-0">
-                    <code class="bg-gray-100 px-2 py-1 rounded text-xs select-all"><%= key.key %></code>
+                  <td class="px-6 py-4 text-sm text-gray-500 border-b-0">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-xs select-all break-all whitespace-normal block max-w-xs md:max-w-md font-mono"><%= key.key %></code>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap border-b-0">
                     <span class={[

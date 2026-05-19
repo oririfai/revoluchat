@@ -47,6 +47,6 @@ defmodule Revoluchat.Calls.CallHistory do
     ])
     |> validate_inclusion(:direction, ["incoming", "outgoing"])
     |> validate_inclusion(:type, ["audio", "video"])
-    |> validate_inclusion(:status, ["missed", "rejected", "completed"])
+    |> validate_inclusion(:status, ["missed", "rejected", "completed", "canceled"])
   end
 end

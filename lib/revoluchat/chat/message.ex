@@ -17,11 +17,12 @@ defmodule Revoluchat.Chat.Message do
     field(:read_at, :utc_datetime_usec)
     field(:edited_at, :utc_datetime_usec)
     field(:deleted_at, :utc_datetime_usec)
-    # sender_id adalah integer (uint dari MySQL user service)
-    field(:sender_id, :integer)
+    # sender_id adalah string (UUID)
+    field(:sender_id, :string)
 
     field(:status, :string, virtual: true, default: "sent")
     field(:metadata, :map)
+    field(:group_id, :string)
     field(:attachment_ids, {:array, :binary_id}, default: [])
 
     belongs_to(:conversation, Revoluchat.Chat.Conversation)

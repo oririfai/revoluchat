@@ -8,5 +8,9 @@ mkdir -p lib/revoluchat/grpc
 
 # Generate code
 protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/chat.proto
+protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/user.proto
+protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/admin.proto
+mv lib/revoluchat/grpc/priv/protos/*.pb.ex lib/revoluchat/grpc/
+rm -rf lib/revoluchat/grpc/priv
 
 echo "✅ Proto code generated successfully in lib/revoluchat/grpc"

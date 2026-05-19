@@ -31,6 +31,10 @@ config :cors_plug,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   headers: ["Authorization", "Content-Type", "Accept", "Origin"]
 
+# ─── Tier Configuration (normal | advance) ──────────────────────────────────
+tier_type = System.get_env("TIER_TYPE") || "normal"
+config :revoluchat, :tier_type, tier_type
+
 # ─── JWKS URL (Runtime, dibaca saat container start) ───────────────────────────
 jwks_url = System.get_env("JWKS_URL") || "http://host.docker.internal:8089/jwks"
 config :revoluchat, :jwks_url, jwks_url
@@ -69,7 +73,7 @@ case storage_mode do
       secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
       region: System.get_env("AWS_REGION") || "us-east-1",
       s3: [
-        scheme: "http://",
+        scheme: "http",
         host: minio_host,
         port: minio_port
       ]
@@ -88,7 +92,7 @@ case storage_mode do
       secret_access_key: System.get_env("R2_SECRET_ACCESS_KEY"),
       region: "auto",
       s3: [
-        scheme: "https://",
+        scheme: "https",
         host: "#{account_id}.r2.cloudflarestorage.com",
         port: 443
       ]
@@ -159,7 +163,8 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
-    sockets_options: maybe_ipv6
+    sockets_options: maybe_ipv6,
+    parameters: [timezone: "UTC"]
 
   # User Service Integration via gRPC handled by Revoluchat.Grpc.UserClient
 

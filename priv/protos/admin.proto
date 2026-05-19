@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package admin.v1;
+
+option go_package = "github.com/oririfai/revoluchat-go-sdk/proto/admin_v1";
+
+service AdminService {
+  // User Management
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc SuspendUser(SuspendUserRequest) returns (ActionResponse);
+  rpc UnsuspendUser(UnsuspendUserRequest) returns (ActionResponse);
+}
+
+message ListUsersRequest {
+  string query = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  string status_filter = 4; // all, active, suspended
+}
+
+message ListUsersResponse {
+  repeated AdminUser users = 1;
+  int32 total_count = 2;
+  int32 total_pages = 3;
+}
+
+message AdminUser {
+  string id = 1; // numeric ID or UUID
+  string uuid = 2;
+  string name = 3;
+  string phone = 4;
+  string status = 5;
+  string inserted_at = 6;
+  bool is_kyc = 7;
+}
+
+message SuspendUserRequest {
+  string user_id = 1; // UUID
+  string duration = 2; // e.g. "1_day", "1_week", "permanent"
+  string reason = 3;
+}
+
+message UnsuspendUserRequest {
+  string user_id = 1; // UUID
+}
+
+message ActionResponse {
+  bool success = 1;
+  string message = 2;
+}

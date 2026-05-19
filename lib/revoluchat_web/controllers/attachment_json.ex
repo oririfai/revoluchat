@@ -18,7 +18,7 @@ defmodule RevoluchatWeb.AttachmentJSON do
       if is_map(upload_data) do
         if upload_data[:proxy] do
           # Build a relative path. The Android client will securely prefix this with its own baseUrl.
-          url = "/api/v1/attachments/#{attachment.id}/upload"
+          url = "/api/a/v1/attachments/#{attachment.id}/upload"
           Map.merge(base, %{
             upload_url: url,
             upload_method: "PUT"

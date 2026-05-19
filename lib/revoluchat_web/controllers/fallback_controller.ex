@@ -54,11 +54,30 @@ defmodule RevoluchatWeb.FallbackController do
     |> json(%{error: "forbidden"})
   end
 
+  # gRPC errors
+  def call(conn, {:error, %GRPC.RPCError{status: 2, message: "no rows in result set"}}) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: "not_found", message: "Data tidak ditemukan di backend Go"})
+  end
+
+  def call(conn, {:error, %GRPC.RPCError{} = error}) do
+    conn
+    |> put_status(:internal_server_error)
+    |> json(%{error: "grpc_error", message: error.message})
+  end
+
   # Generic
   def call(conn, {:error, reason}) when is_atom(reason) do
     conn
     |> put_status(:bad_request)
     |> json(%{error: to_string(reason)})
+  end
+
+  def call(conn, {:error, message}) when is_binary(message) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "bad_request", message: message})
   end
 
   # ─── Private ─────────────────────────────────────────────────────────────────

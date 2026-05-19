@@ -9,10 +9,11 @@ defmodule RevoluchatWeb.AttachmentController do
 
   def init(conn, params) do
     user_id = conn.assigns[:current_user_id]
+    numeric_user_id = conn.assigns[:current_numeric_user_id]
     app_id = conn.assigns[:current_app_id]
     attrs = 
       params
-      |> Map.put("uploader_id", user_id)
+      |> Map.put("uploader_id", numeric_user_id || user_id)
       |> Map.put("app_id", app_id)
 
     with {:ok, attachment, url} <- Chat.create_attachment_init(attrs) do
@@ -36,6 +37,10 @@ defmodule RevoluchatWeb.AttachmentController do
                  attachment.mime_type
                ) do
             {:ok, _} ->
+              # Auto-approve since we just successfully uploaded it
+              app_id = conn.assigns[:current_app_id]
+              Chat.approve_attachment_direct(app_id, id)
+              
               json(conn, %{success: true})
               
             {:error, reason} ->
@@ -67,7 +72,7 @@ defmodule RevoluchatWeb.AttachmentController do
   end
 
   def confirm(conn, %{"id" => id}) do
-    user_id = conn.assigns[:current_user_id]
+    user_id = conn.assigns[:current_numeric_user_id] || conn.assigns[:current_user_id]
     app_id = conn.assigns[:current_app_id]
 
     with {:ok, attachment} <- Chat.confirm_attachment(app_id, id, user_id),
@@ -79,7 +84,7 @@ defmodule RevoluchatWeb.AttachmentController do
   end
 
   def download(conn, %{"id" => id}) do
-    user_id = conn.assigns[:current_user_id]
+    user_id = conn.assigns[:current_numeric_user_id] || conn.assigns[:current_user_id]
     app_id = conn.assigns[:current_app_id]
 
     case Chat.get_attachment_download_url(app_id, id, user_id) do
@@ -95,19 +100,23 @@ defmodule RevoluchatWeb.AttachmentController do
   end
 
   def show(conn, %{"id" => id}) do
-    user_id = conn.assigns[:current_user_id]
-    app_id = conn.assigns[:current_app_id]
+    app_id = conn.assigns.current_app_id
+    user_id = conn.assigns[:current_numeric_user_id] || conn.assigns[:current_user_id]
 
     case Chat.get_approved_attachment_for_user(app_id, id, user_id) do
       {:ok, attachment} ->
         Logger.info("AttachmentController: Fetching from storage key: #{attachment.storage_key}")
         case Revoluchat.Storage.get_object(attachment.storage_key) do
-          {:ok, %{body: binary_data} = resp} ->
-            Logger.info("AttachmentController: Successfully fetched binary data. Size: #{byte_size(binary_data)} bytes. Status: #{resp[:status_code]}")
+          {:ok, %{body: binary_data, status_code: status} = resp} when status in 200..299 ->
+            Logger.info("AttachmentController: Successfully fetched binary data for #{id}. Size: #{byte_size(binary_data)} bytes. Response: #{inspect(Map.drop(resp, [:body]))}")
             conn
             |> put_resp_content_type(attachment.mime_type || "application/octet-stream")
             |> put_resp_header("cache-control", "public, max-age=3600")
             |> send_resp(200, binary_data)
+
+          {:ok, %{status_code: status, body: body}} ->
+            Logger.error("AttachmentController: Storage returned error status #{status} for attachment #{id}. Body: #{inspect(body)}")
+            conn |> put_status(:internal_server_error) |> json(%{error: "Storage error", status: status})
 
           {:ok, other} ->
             Logger.error("AttachmentController: Storage returned unexpected structure: #{inspect(other)}")
@@ -125,10 +134,10 @@ defmodule RevoluchatWeb.AttachmentController do
         end
 
       {:error, reason} ->
-        Logger.warn("Access denied or attachment not found for proxy show: #{id}, reason: #{inspect(reason)}")
+        Logger.warning("Access denied or attachment not found for proxy show: #{id}, reason: #{inspect(reason)}")
         conn
         |> put_status(:not_found)
-        |> json(%{error: "Not found or access denied"})
+        |> json(%{error: "not_found", message: "Attachment not found or not authorized"})
     end
   end
 

@@ -1,0 +1,173 @@
+defmodule RevoluchatWeb.GroupController do
+  use RevoluchatWeb, :controller
+  require Logger
+
+  alias Revoluchat.Chat
+  alias Revoluchat.Accounts
+
+  action_fallback(RevoluchatWeb.FallbackController)
+
+  # GET /api/v1/groups/:id
+  def show(conn, %{"id" => id}) do
+    app_id = conn.assigns.current_app_id
+    with {:ok, group} <- Chat.get_group(app_id, id) do
+      json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id)})
+    end
+  end
+
+  # POST /api/v1/groups
+  def create(conn, params) do
+    app_id = conn.assigns.current_app_id
+    user_id = conn.assigns.current_user_id
+    
+    # Proactively sync members to Go backend to ensure they exist for group membership
+    all_uuids = [user_id | (params["members"] || params["member_ids"] || [])]
+    Enum.each(all_uuids, fn uuid -> 
+      Revoluchat.Accounts.sync_user_profile_to_advance_tier(app_id, uuid)
+    end)
+
+    params = params
+    |> Map.put(:creator_id, user_id)
+    |> Map.put(:member_ids, params["members"] || params["member_ids"] || [])
+    |> Map.put(:name, params["name"])
+    |> Map.put(:description, params["description"])
+    
+    with {:ok, created_group} <- Chat.create_group(app_id, params),
+         {:ok, group} <- Chat.get_group(app_id, created_group.id) do
+      
+      # Notify all members about the new group
+      Enum.each(group.members, fn member ->
+        formatted_for_member = format_group(group, app_id, member.user_id)
+        RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", %{
+          conversation_id: "group_#{group.id}",
+          type: "group",
+          group: formatted_for_member
+        })
+      end)
+
+      conn
+      |> put_status(:created)
+      |> json(%{data: format_group(group, app_id, user_id)})
+    end
+  end
+
+  # PUT /api/v1/groups/:id
+  def update(conn, %{"id" => id} = params) do
+    app_id = conn.assigns.current_app_id
+    with {:ok, group} <- Chat.update_group(app_id, id, params) do
+      json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id)})
+    end
+  end
+
+  # POST /api/v1/groups/:id/members
+  def add_members(conn, %{"id" => id, "user_ids" => user_ids}) do
+    app_id = conn.assigns.current_app_id
+    with :ok <- Chat.add_members(app_id, id, user_ids) do
+      json(conn, %{success: true})
+    end
+  end
+
+  # DELETE /api/v1/groups/:id/members/:user_id
+  def remove_member(conn, %{"id" => id, "user_id" => user_id}) do
+    app_id = conn.assigns.current_app_id
+    with :ok <- Chat.remove_member(app_id, id, user_id) do
+      json(conn, %{success: true})
+    end
+  end
+
+  # POST /api/v1/groups/:id/leave
+  def leave(conn, %{"id" => id}) do
+    app_id = conn.assigns.current_app_id
+    user_id = conn.assigns.current_user_id
+    with :ok <- Chat.leave_group(app_id, id, user_id) do
+      json(conn, %{success: true})
+    end
+  end
+
+  # POST /api/v1/groups/:id/mute
+  def mute(conn, %{"id" => id, "mute" => mute}) do
+    app_id = conn.assigns.current_app_id
+    user_id = conn.assigns.current_user_id
+    with :ok <- Chat.mute_group(app_id, id, user_id, mute) do
+      json(conn, %{success: true})
+    end
+  end
+
+  # POST /api/v1/groups/:id/accept
+  def accept(conn, %{"id" => id}) do
+    app_id = conn.assigns.current_app_id
+    user_id = conn.assigns.current_user_id
+    with :ok <- Chat.accept_group_invitation(app_id, id, user_id) do
+      json(conn, %{success: true})
+    end
+  end
+
+  # ─── Private ─────────────────────────────────────────────────────────────────
+
+  def format_group(group, app_id, current_user_id) do
+    # Fetch member details for better FE display
+    user_ids = Enum.map(group.members, & &1.user_id)
+    users_data = Accounts.list_registered_users_by_ids(app_id, user_ids)
+    users_map = Map.new(users_data, fn u -> {u.id, u} end)
+
+    %{
+      id: "group_#{group.id}",
+      name: group.name,
+      description: group.description,
+      avatar_url: resolve_avatar_url(group.avatar_url),
+      is_locked: group.is_locked,
+      creator_id: group.creator_id,
+      inserted_at: group.inserted_at,
+      updated_at: group.updated_at,
+      unread_count: group.unread_count,
+      members: Enum.map(group.members || [], fn m ->
+        user = Map.get(users_map, m.user_id)
+        %{
+          user_id: m.user_id,
+          role: m.role,
+          status: m.status,
+          is_muted: m.is_muted,
+          joined_at: m.joined_at,
+          user: %{
+            id: (user && user.id) || m.user_id,
+            name: (user && user.name) || "Unknown",
+            avatar_url: (user && user.avatar_url)
+          }
+        }
+      end),
+      last_message: format_last_message(Map.get(group, :last_message)),
+      my_status: (Enum.find_value(group.members || [], fn m -> 
+        if to_string(m.user_id) == to_string(current_user_id) do
+          m.status
+        end
+      end) || Map.get(group, :my_status))
+    }
+    |> tap(fn result -> 
+      member_ids = Enum.map(group.members || [], & &1.user_id)
+      last_msg_inserted_at = if result[:last_message], do: result[:last_message].inserted_at, else: "N/A"
+      Logger.info("[GroupController] Formatted group #{group.id} for user #{current_user_id}. My Status: #{result[:my_status]}. Last Message Date: #{last_msg_inserted_at}. Members in list: #{inspect(member_ids)}")
+    end)
+  end
+
+  defp format_last_message(nil), do: nil
+  defp format_last_message(m) do
+    %{
+      id: m.id,
+      body: m.body,
+      type: m.type,
+      sender_id: m.sender_id,
+      inserted_at: m.inserted_at
+    }
+  end
+
+  defp resolve_avatar_url(nil), do: nil
+  defp resolve_avatar_url(""), do: nil
+  defp resolve_avatar_url(url) do
+    # If it's a UUID (36 chars with dashes), treat as attachment ID
+    if String.match?(url, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) do
+      "/api/a/v1/attachments/#{url}/show"
+    else
+      url
+    end
+  end
+end

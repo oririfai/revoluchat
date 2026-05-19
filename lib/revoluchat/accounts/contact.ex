@@ -3,8 +3,8 @@ defmodule Revoluchat.Accounts.Contact do
   import Ecto.Changeset
 
   schema "contacts" do
-    field :owner_id, :integer
-    field :contact_id, :integer
+    field :owner_id, :string
+    field :contact_id, :string
     field :app_id, :string
     field :status, :string, default: "added"
 
