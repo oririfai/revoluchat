@@ -41,6 +41,10 @@ defmodule RevoluchatWeb.UserChannel do
                 {:ok, caller_token} = Revoluchat.LiveKit.Token.generate(call_id, call.caller_id, caller_name)
                 {:ok, current_token} = Revoluchat.LiveKit.Token.generate(call_id, current_user_id, receiver_name)
 
+                # Generate CoTURN credentials dynamically
+                coturn_caller = Revoluchat.RTC.TurnCredentials.generate(call.caller_id)
+                coturn_receiver = Revoluchat.RTC.TurnCredentials.generate(current_user_id)
+
                 payload = %{
                   "call_id" => call_id,
                   "type" => call.type,
@@ -52,7 +56,13 @@ defmodule RevoluchatWeb.UserChannel do
                   "livekit_url" => livekit_url,
                   "livekit_token_caller" => caller_token,
                   "livekit_token_receiver" => current_token,
-                  "is_group" => not is_nil(call.group_id)
+                  "is_group" => not is_nil(call.group_id),
+                  "coturn_host" => coturn_caller.host,
+                  "coturn_port" => coturn_caller.port,
+                  "coturn_username_caller" => coturn_caller.username,
+                  "coturn_credential_caller" => coturn_caller.credential,
+                  "coturn_username_receiver" => coturn_receiver.username,
+                  "coturn_credential_receiver" => coturn_receiver.credential
                 }
 
                 # BROADCAST to correct Room/Group topic

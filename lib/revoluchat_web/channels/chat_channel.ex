@@ -323,20 +323,8 @@ defmodule RevoluchatWeb.ChatChannel do
       group_id = socket.assigns[:group_id]
       receiver_id = params["receiver_id"]
 
-      # Safely parse receiver_id based on tier
-      receiver_id = 
-        if is_binary(receiver_id) do
-          if Application.get_env(:revoluchat, :tier_type) == "advance" do
-            receiver_id
-          else
-            case Integer.parse(receiver_id) do
-              {int, _} -> int
-              :error -> receiver_id
-            end
-          end
-        else
-          receiver_id
-        end
+      # Ensure receiver_id is a string (since schema now uses :string universally)
+      receiver_id = if is_binary(receiver_id), do: receiver_id, else: to_string(receiver_id)
 
       # Security: Verify membership or group status
       case {conversation_id, group_id} do
@@ -409,6 +397,10 @@ defmodule RevoluchatWeb.ChatChannel do
               
               {:ok, current_user_token} = Revoluchat.LiveKit.Token.generate(call_id, current_user_id, current_user_name)
 
+              # Generate CoTURN credentials dynamically
+              coturn_caller = Revoluchat.RTC.TurnCredentials.generate(call.caller_id)
+              coturn_receiver = Revoluchat.RTC.TurnCredentials.generate(current_user_id)
+
               payload = %{
                 "call_id" => call_id,
                 "status" => "connected",
@@ -419,7 +411,13 @@ defmodule RevoluchatWeb.ChatChannel do
                 "livekit_url" => livekit_url,
                 "livekit_token_caller" => caller_token,
                 "livekit_token_receiver" => current_user_token,
-                "is_group" => not is_nil(call.group_id)
+                "is_group" => not is_nil(call.group_id),
+                "coturn_host" => coturn_caller.host,
+                "coturn_port" => coturn_caller.port,
+                "coturn_username_caller" => coturn_caller.username,
+                "coturn_credential_caller" => coturn_caller.credential,
+                "coturn_username_receiver" => coturn_receiver.username,
+                "coturn_credential_receiver" => coturn_receiver.credential
               }
 
               # 1. Broadast to Room (for everyone in conversation/group)

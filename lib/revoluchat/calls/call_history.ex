@@ -6,8 +6,8 @@ defmodule Revoluchat.Calls.CallHistory do
   @foreign_key_type :binary_id
   schema "call_histories" do
     field(:app_id, :string)
-    field(:user_id, :integer)
-    field(:other_party_id, :integer)
+    field(:user_id, :string)
+    field(:other_party_id, :string)
     # "incoming", "outgoing"
     field(:direction, :string)
     # "audio", "video"

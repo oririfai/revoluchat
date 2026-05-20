@@ -6,8 +6,8 @@ defmodule RevoluchatWeb.Endpoint do
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
-    key: "_revoluchat_key",
-    signing_salt: "aCjBnSTY",
+    key: "_site_key",
+    signing_salt: System.get_env("SESSION_SIGNING_SALT") || "aCjBnSTYppSWjkghteySJgsRYD",
     same_site: "Lax"
   ]
 

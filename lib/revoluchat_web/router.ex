@@ -27,10 +27,17 @@ defmodule RevoluchatWeb.Router do
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
+    plug(RevoluchatWeb.Plugs.AdminAutoLogin)
+    plug(RevoluchatWeb.Plugs.AdminSessionTimeout)
+    plug(RevoluchatWeb.Plugs.AdminSessionPinning)
     plug(:fetch_live_flash)
     plug(:put_root_layout, html: {RevoluchatWeb.Layouts, :root})
     plug(:protect_from_forgery)
     plug(:put_secure_browser_headers)
+  end
+
+  pipeline :admin_login_rate_limit do
+    plug(RevoluchatWeb.Plugs.AdminLoginRateLimiter)
   end
 
   # ─── Health Checks (tanpa auth) ──────────────────────────────────────────────
@@ -41,14 +48,18 @@ defmodule RevoluchatWeb.Router do
     get("/health", HealthController, :liveness)
     get("/health/ready", HealthController, :readiness)
     get("/health/metrics", HealthController, :metrics)
-    post("/api/debug/upload", DebugController, :upload)
+  end
+
+  scope "/admin", RevoluchatWeb do
+    pipe_through([:browser, :admin_login_rate_limit])
+
+    post("/login", SessionController, :create)
   end
 
   scope "/admin", RevoluchatWeb do
     pipe_through(:browser)
 
     get("/login", LoginController, :index)
-    post("/login", SessionController, :create)
     delete("/logout", SessionController, :delete)
 
     live_session :admin, on_mount: [{RevoluchatWeb.AdminAuth, :default}] do

@@ -9,6 +9,10 @@ defmodule Revoluchat.Accounts.UserChat do
     field :name, :string
     field :phone, :string
     field :avatar_url, :string
+    field :is_active, :boolean, default: true
+    field :suspended_until, :utc_datetime
+    field :description, :string
+    field :birth_date, :date
 
     timestamps()
   end
@@ -16,7 +20,7 @@ defmodule Revoluchat.Accounts.UserChat do
   @doc false
   def changeset(user_chat, attrs) do
     user_chat
-    |> cast(attrs, [:user_id, :chat_id, :app_id, :name, :phone, :avatar_url])
+    |> cast(attrs, [:user_id, :chat_id, :app_id, :name, :phone, :avatar_url, :is_active, :suspended_until, :description, :birth_date])
     |> validate_required([:user_id, :chat_id, :app_id])
     |> unique_constraint([:user_id, :app_id], name: :user_id_app_id_unique)
   end

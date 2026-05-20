@@ -1,45 +1,92 @@
-<div class="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
-  <div class="sm:mx-auto sm:w-full sm:max-w-md">
-    <div class="flex justify-center items-center gap-2">
-        <span class="text-primary-600 font-black text-4xl tracking-tighter">REVOLU</span>
-        <span class="text-gray-400 font-light text-3xl">CHAT</span>
+<header class="w-full h-20 px-8 lg:px-24 flex items-center border-b border-gray-100/60 bg-white">
+  <div class="flex items-center gap-2.5">
+    <div class="relative w-8 h-6 flex items-center justify-center flex-shrink-0">
+      <div class="absolute inset-0 bg-primary-600 rounded-sm transform -skew-x-12"></div>
     </div>
-    <h2 class="mt-6 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
-      Sign in to Enterprise Dashboard
-    </h2>
+    <span class="text-xl font-bold text-[#0f172a] tracking-tight">Revoluchat</span>
   </div>
+</header>
 
-  <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-[480px]">
-    <.card class="px-6 py-12 shadow sm:rounded-lg sm:px-12">
-      <.form :let={f} for={%{}} as={:auth} action={~p"/admin/login"} class="space-y-6">
-        <%= if @error_message do %>
-          <.alert color="danger" label={@error_message} />
-        <% end %>
+<main class="flex-grow flex flex-col items-center justify-center px-4 py-12 md:py-20 bg-white">
+  <div class="w-full max-w-[420px] flex flex-col">
+    <!-- Title & Subtitle -->
+    <h1 class="text-[40px] font-bold text-gray-900 tracking-tight leading-none mb-2">Login</h1>
+    <p class="text-sm text-gray-400 font-medium mb-8">Hi, Welcome back 👋</p>
 
-        <.field
-          label="Email address"
-          field={f[:email]}
-          type="email"
-          required
-        />
-
-        <.field
-          label="Password"
-          field={f[:password]}
-          type="password"
-          required
-        />
-
-        <div class="pt-2">
-          <.revolu_button type="submit" variant="solid" class="w-full justify-center">
-            Sign in
-          </.revolu_button>
+    <!-- Form -->
+    <.form :let={f} for={%{}} as={:auth} action={~p"/admin/login"} class="space-y-5">
+      <%= if Phoenix.Controller.get_flash(@conn, :error) do %>
+        <div class="p-3.5 bg-red-50 border border-red-100 text-red-600 text-xs font-semibold rounded-lg">
+          <%= Phoenix.Controller.get_flash(@conn, :error) %>
         </div>
-      </.form>
-    </.card>
-    
-    <div class="mt-8 text-center text-xs text-gray-400">
-      Revoluchat Enterprise v0.1.0 &copy; 2026
-    </div>
+      <% end %>
+      <%= if @error_message do %>
+        <div class="p-3.5 bg-red-50 border border-red-100 text-red-600 text-xs font-semibold rounded-lg">
+          <%= @error_message %>
+        </div>
+      <% end %>
+
+      <!-- Email Field -->
+      <div>
+        <label class="block text-xs font-bold text-gray-800 mb-1.5 uppercase tracking-wider">Email</label>
+        <div class="relative">
+          <input 
+            type="email" 
+            name="auth[email]" 
+            required 
+            placeholder="E.g. johndoe@email.com" 
+            class="block w-full rounded-lg border border-gray-200 px-4 py-3 text-sm placeholder-gray-300 focus:border-primary-600 focus:ring-1 focus:ring-primary-600 shadow-sm transition-all duration-150 text-gray-900 font-normal outline-none"
+          />
+        </div>
+      </div>
+
+      <!-- Password Field -->
+      <div>
+        <label class="block text-xs font-bold text-gray-800 mb-1.5 uppercase tracking-wider">Password</label>
+        <div class="relative">
+          <input 
+            id="password-input"
+            type="password" 
+            name="auth[password]" 
+            required 
+            placeholder="Enter your password" 
+            class="block w-full rounded-lg border border-gray-200 px-4 py-3 text-sm placeholder-gray-300 focus:border-primary-600 focus:ring-1 focus:ring-primary-600 shadow-sm transition-all duration-150 text-gray-900 font-normal pr-10 outline-none"
+          />
+          <!-- Eye visibility icon toggle button -->
+          <button 
+            type="button" 
+            onclick="const p = document.getElementById('password-input'); p.type = p.type === 'password' ? 'text' : 'password';"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Remember Me -->
+      <div class="flex items-center text-sm pt-1.5">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input 
+            type="checkbox" 
+            name="auth[remember_me]" 
+            class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 shadow-sm"
+          />
+          <span class="text-sm font-semibold text-gray-700">Remember Me</span>
+        </label>
+      </div>
+
+      <!-- Login Button -->
+      <div class="pt-3">
+        <button 
+          type="submit" 
+          class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 px-4 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 text-sm active:scale-[0.98]"
+        >
+          Login
+        </button>
+      </div>
+    </.form>
+
   </div>
-</div>
+</main>

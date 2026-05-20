@@ -1,6 +1,7 @@
 defmodule RevoluchatWeb.DashboardComponents do
   use Phoenix.Component
   use PetalComponents
+  import PetalComponents.Modal, except: [modal: 1]
   use RevoluchatWeb, :verified_routes
 
   alias Phoenix.LiveView.JS
@@ -94,12 +95,13 @@ defmodule RevoluchatWeb.DashboardComponents do
           <%= if !@collapsed do %>
             <div class="text-sm overflow-hidden">
               <p class="font-medium text-gray-700 truncate"><%= @admin_name %></p>
-              <form action={~p"/admin/logout"} method="post" class="inline">
-                <input type="hidden" name="_method" value="delete">
-                <button type="submit" class="text-xs text-gray-400 hover:text-red-500 transition-colors">
-                  Sign out
-                </button>
-              </form>
+              <button
+                type="button"
+                phx-click={show_dashboard_modal("logout-modal")}
+                class="text-xs text-gray-400 hover:text-red-500 transition-colors block text-left"
+              >
+                Sign out
+              </button>
             </div>
           <% end %>
         </div>
@@ -116,6 +118,31 @@ defmodule RevoluchatWeb.DashboardComponents do
           class="w-3.5 h-3.5 transition-transform duration-300 group-hover/toggle:scale-110"
         />
       </button>
+
+      <!-- Logout Confirmation Modal -->
+      <.modal
+        id="logout-modal"
+        show={false}
+        on_cancel={hide_dashboard_modal("logout-modal")}
+        title="Confirm Sign Out"
+        type="warning"
+      >
+        <div class="space-y-2">
+          <p class="text-sm text-gray-600">
+            Are you sure you want to sign out from the Admin Panel?
+          </p>
+        </div>
+        <:footer>
+          <.revolu_button phx-click={hide_dashboard_modal("logout-modal")} variant="white">Cancel</.revolu_button>
+          <form action={~p"/admin/logout"} method="post" class="inline">
+            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+            <input type="hidden" name="_method" value="delete">
+            <.revolu_button type="submit" variant="solid" class="bg-amber-600 hover:bg-amber-700">
+              Sign Out
+            </.revolu_button>
+          </form>
+        </:footer>
+      </.modal>
     </aside>
     """
   end

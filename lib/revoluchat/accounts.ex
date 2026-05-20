@@ -5,7 +5,7 @@ defmodule Revoluchat.Accounts do
   dan cek user exist via gRPC call ke User Service.
   """
 
-  alias Revoluchat.Accounts.{Token, ApiKey, ServerKey, UserChat, Contact}
+  alias Revoluchat.Accounts.{Token, ApiKey, ServerKey, UserChat, Contact, Admin, AdminLoginActivity}
   alias Revoluchat.Grpc.UserClient
   alias Revoluchat.Repo
   import Ecto.Query
@@ -209,15 +209,66 @@ defmodule Revoluchat.Accounts do
   Returns {:ok, user} atau {:error, :user_not_found}.
   """
   def verify_user_exists(user_id) do
-    case UserClient.get_user(user_id) do
-      {:ok, user} ->
-        {:ok, user}
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      case UserClient.get_user(user_id) do
+        {:ok, user} ->
+          cond do
+            user.status == "active" ->
+              {:ok, user}
+            String.starts_with?(user.status, "suspended:") ->
+              "suspended:" <> suspended_until = user.status
+              case DateTime.from_iso8601(suspended_until) do
+                {:ok, suspended_until_dt, _offset} ->
+                  if DateTime.compare(suspended_until_dt, DateTime.utc_now()) in [:lt, :eq] do
+                    Logger.info("Advance suspension expired for user #{user_id}! Auto-reactivating...")
+                    case Revoluchat.Grpc.AdminClient.unsuspend_user(user_id) do
+                      {:ok, _} ->
+                        {:ok, Map.put(user, :status, "active")}
+                      _ ->
+                        {:error, {:suspended, suspended_until}}
+                    end
+                  else
+                    {:error, {:suspended, suspended_until}}
+                  end
+                _ ->
+                  {:error, {:suspended, suspended_until}}
+              end
+            true ->
+              {:error, {:suspended, nil}}
+          end
 
-      {:error, :not_found} ->
-        {:error, :user_not_found}
+        {:error, :not_found} ->
+          {:error, :user_not_found}
 
-      {:error, _reason} ->
-        {:error, :user_not_found}
+        {:error, _reason} ->
+          {:error, :user_not_found}
+      end
+    else
+      # Normal tier: check local db
+      case Repo.get_by(UserChat, user_id: to_string(user_id)) do
+        nil ->
+          # If not found locally, we let them connect
+          {:ok, %{name: "User", phone: "", avatar_url: ""}}
+        uc ->
+          cond do
+            uc.is_active ->
+              if not is_nil(uc.suspended_until) and DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :gt do
+                {:error, {:suspended, DateTime.to_iso8601(uc.suspended_until)}}
+              else
+                {:ok, uc}
+              end
+            true ->
+              # Not active (is_active is false). Check if suspended_until has passed.
+              if not is_nil(uc.suspended_until) and DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :lt do
+                # Suspension expired! Auto-reactivate.
+                uc |> UserChat.changeset(%{is_active: true, suspended_until: nil}) |> Repo.update()
+                {:ok, uc}
+              else
+                suspended_until_str = if uc.suspended_until, do: DateTime.to_iso8601(uc.suspended_until), else: nil
+                {:error, {:suspended, suspended_until_str}}
+              end
+          end
+      end
     end
   end
 
@@ -522,5 +573,194 @@ defmodule Revoluchat.Accounts do
     else
       phone
     end
+  end
+
+  # ─── Admin Management ────────────────────────────────────────────────────────
+
+  @doc """
+  Lists users for the Admin Dashboard.
+  Delegates to gRPC for Advance tier, or queries UserChat for Normal tier.
+  """
+  def list_admin_users(app_id \\ nil, query \\ "", page \\ 1, limit \\ 10, status_filter \\ "all") do
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      Revoluchat.Grpc.AdminClient.list_users(query, page, limit, status_filter)
+    else
+      offset = (page - 1) * limit
+      
+      base_query = from(uc in UserChat)
+
+      base_query = 
+        if app_id do
+          from(uc in base_query, where: uc.app_id == ^app_id)
+        else
+          base_query
+        end
+
+      base_query = 
+        if query != "" do
+          search_term = "%#{query}%"
+          from(uc in base_query, where: ilike(uc.name, ^search_term) or ilike(uc.phone, ^search_term))
+        else
+          base_query
+        end
+
+      base_query =
+        case status_filter do
+          "active" -> from(uc in base_query, where: uc.is_active == true)
+          "suspended" -> from(uc in base_query, where: uc.is_active == false)
+          _ -> base_query
+        end
+
+      total_count = Repo.aggregate(base_query, :count, :id)
+      total_pages = ceil(total_count / limit)
+
+      users = 
+        base_query
+        |> order_by([desc: :inserted_at])
+        |> offset(^offset)
+        |> limit(^limit)
+        |> Repo.all()
+        |> Enum.map(fn uc ->
+          %{
+            id: to_string(uc.user_id),
+            uuid: to_string(uc.user_id),
+            name: uc.name || "User #{uc.user_id}",
+            phone: uc.phone || "-",
+            status:
+              if uc.is_active and (is_nil(uc.suspended_until) or DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :lt) do
+                "active"
+              else
+                "suspended"
+              end,
+            inserted_at: DateTime.to_iso8601(DateTime.from_naive!(uc.inserted_at, "Etc/UTC")),
+            is_kyc: true # Default for now
+          }
+        end)
+
+      {:ok, %{
+        users: users,
+        total_count: total_count,
+        total_pages: total_pages
+      }}
+    end
+  end
+
+  def suspend_user(app_id \\ nil, user_id, duration, reason) do
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      case Revoluchat.Grpc.AdminClient.suspend_user(user_id, duration, reason) do
+        {:ok, response} ->
+          # Kick online user WebSocket immediately!
+          RevoluchatWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
+          {:ok, response}
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      query = from(uc in UserChat, where: uc.user_id == ^to_string(user_id))
+      query = if app_id, do: from(uc in query, where: uc.app_id == ^app_id), else: query
+      
+      case Repo.all(query) do
+        [] -> {:error, "User not found"}
+        users ->
+          suspended_until = parse_duration(duration)
+          Enum.each(users, fn u -> 
+            u |> UserChat.changeset(%{is_active: false, suspended_until: suspended_until}) |> Repo.update()
+          end)
+          # Kick online user WebSocket immediately!
+          RevoluchatWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
+          {:ok, %{success: true, message: "User suspended successfully"}}
+      end
+    end
+  end
+
+  def unsuspend_user(app_id \\ nil, user_id) do
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      Revoluchat.Grpc.AdminClient.unsuspend_user(user_id)
+    else
+      query = from(uc in UserChat, where: uc.user_id == ^to_string(user_id))
+      query = if app_id, do: from(uc in query, where: uc.app_id == ^app_id), else: query
+      
+      case Repo.all(query) do
+        [] -> {:error, "User not found"}
+        users ->
+          Enum.each(users, fn u -> 
+            u |> UserChat.changeset(%{is_active: true, suspended_until: nil}) |> Repo.update()
+          end)
+          {:ok, %{success: true, message: "User unsuspended successfully"}}
+      end
+    end
+  end
+
+  defp parse_duration(duration) do
+    cond do
+      duration == "permanent" or duration == "" or is_nil(duration) ->
+        nil
+      true ->
+        case Regex.run(~r/^(\d+)([a-zA-Z]+)$/, to_string(duration)) do
+          [_, val_str, unit] ->
+            val = String.to_integer(val_str)
+            now = DateTime.utc_now()
+            case String.downcase(unit) do
+              "h" -> DateTime.add(now, val * 3600, :second)
+              "d" -> DateTime.add(now, val * 86400, :second)
+              "w" -> DateTime.add(now, val * 7 * 86400, :second)
+              "m" -> DateTime.add(now, val * 30 * 86400, :second)
+              "y" -> DateTime.add(now, val * 365 * 86400, :second)
+              _ -> nil
+            end
+          _ ->
+            nil
+        end
+    end
+  end
+
+  def log_admin_login(admin_or_email, ip_address, user_agent, status) do
+    {os, browser} = parse_user_agent(user_agent)
+    
+    attrs = %{
+      ip_address: ip_address,
+      user_agent: user_agent,
+      device_os: os,
+      device_browser: browser,
+      status: to_string(status)
+    }
+    
+    attrs = 
+      case admin_or_email do
+        %Admin{} = admin ->
+          Map.merge(attrs, %{admin_id: admin.id, email: admin.email})
+        email when is_binary(email) ->
+          Map.put(attrs, :email, email)
+        _ ->
+          attrs
+      end
+
+    %AdminLoginActivity{}
+    |> AdminLoginActivity.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def parse_user_agent(ua) do
+    ua_str = to_string(ua)
+    os =
+      cond do
+        String.contains?(ua_str, "Windows") -> "Windows"
+        String.contains?(ua_str, "Macintosh") -> "macOS"
+        String.contains?(ua_str, "Android") -> "Android"
+        String.contains?(ua_str, "iPhone") or String.contains?(ua_str, "iPad") -> "iOS"
+        String.contains?(ua_str, "Linux") -> "Linux"
+        true -> "Unknown OS"
+      end
+
+    browser =
+      cond do
+        String.contains?(ua_str, "Edg") -> "Edge"
+        String.contains?(ua_str, "Chrome") -> "Chrome"
+        String.contains?(ua_str, "Safari") -> "Safari"
+        String.contains?(ua_str, "Firefox") -> "Firefox"
+        true -> "Unknown Browser"
+      end
+
+    {os, browser}
   end
 end

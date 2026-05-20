@@ -51,7 +51,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.UserSection do
                 type="text"
                 name="search"
                 value={@search}
-                placeholder="Search by name, phone, or UUID..."
+                placeholder="Search by name or phone..."
                 phx-debounce="300"
                 class="block w-full rounded-md border-gray-300 pl-10 focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               />
@@ -65,7 +65,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.UserSection do
               >
                 <option value="all" selected={@status == "all"}>All Statuses</option>
                 <option value="active" selected={@status == "active"}>Active</option>
-                <option value="suspended" selected={@status == "suspended"}>Inactive</option>
+                <option value="suspended" selected={@status == "suspended"}>Suspended</option>
               </select>
             </form>
           </div>
@@ -114,7 +114,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.UserSection do
                       "px-2 inline-flex text-xs leading-5 font-semibold rounded-full",
                       if(user.status == "active", do: "bg-green-100 text-green-800", else: "bg-red-100 text-red-800")
                     ]}>
-                      <%= String.capitalize(user.status || "inactive") %>
+                      <%= String.capitalize(user.status || "suspended") %>
                     </span>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium border-b-0 space-x-2">
@@ -280,7 +280,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.UserSection do
               "px-2 inline-flex text-xs leading-5 font-semibold rounded-full",
               if(@selected_user.status == "active", do: "bg-green-100 text-green-800", else: "bg-red-100 text-red-800")
             ]}>
-              <%= String.capitalize(@selected_user.status || "inactive") %>
+              <%= String.capitalize(@selected_user.status || "suspended") %>
             </span>
           </div>
         </div>

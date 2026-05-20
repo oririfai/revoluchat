@@ -6,8 +6,8 @@ defmodule Revoluchat.Calls.Call do
   @foreign_key_type :binary_id
   schema "calls" do
     field(:app_id, :string)
-    field(:caller_id, :integer)
-    field(:receiver_id, :integer)
+    field(:caller_id, :string)
+    field(:receiver_id, :string)
     # "audio", "video"
     field(:type, :string)
     # "dialing", "ringing", "connected", "missed", "rejected", "completed"

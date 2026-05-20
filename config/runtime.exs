@@ -42,13 +42,16 @@ config :revoluchat, :jwks_url, jwks_url
 # ─── WebRTC ICE Servers (Dynamic via Environment Var) ─────────────────────────
 if ice_servers_json = System.get_env("ICE_SERVERS") do
   case Jason.decode(ice_servers_json) do
-    {:ok, servers} -> 
+    {:ok, servers} ->
       # Convert string keys to atoms for Elixir Map consistency
-      atomized_servers = Enum.map(servers, fn entry ->
-        for {k, v} <- entry, into: %{}, do: {String.to_existing_atom(k), v}
-      end)
+      atomized_servers =
+        Enum.map(servers, fn entry ->
+          for {k, v} <- entry, into: %{}, do: {String.to_existing_atom(k), v}
+        end)
+
       config :revoluchat, :ice_servers, atomized_servers
-    _ -> 
+
+    _ ->
       :ok
   end
 end
@@ -58,6 +61,12 @@ config :revoluchat, :livekit,
   url: System.get_env("LIVEKIT_URL") || "http://localhost:7880",
   api_key: System.get_env("LIVEKIT_API_KEY") || "devkey",
   api_secret: System.get_env("LIVEKIT_API_SECRET") || "secret"
+
+# ─── CoTURN Server Config ─────────────────────────────────────────────────────
+config :revoluchat, :coturn,
+  host: System.get_env("COTURN_HOST") || "localhost",
+  port: String.to_integer(System.get_env("COTURN_PORT") || "3478"),
+  secret: System.get_env("COTURN_SECRET") || "secret"
 
 # ─── Object Storage Config (minio, cloudflareR2, cloudinary) ──────────────────
 storage_mode = System.get_env("STORAGE_ADAPTOR_MODE") || "minio"
@@ -143,7 +152,9 @@ case storage_mode do
   mode ->
     # Fallback/Warning for invalid mode
     if config_env() != :test do
-      IO.warn("Unsupported STORAGE_ADAPTOR_MODE: #{inspect(mode)}. Storage might not function correctly.")
+      IO.warn(
+        "Unsupported STORAGE_ADAPTOR_MODE: #{inspect(mode)}. Storage might not function correctly."
+      )
     end
 end
 
@@ -167,7 +178,6 @@ if config_env() == :prod do
     parameters: [timezone: "UTC"]
 
   # User Service Integration via gRPC handled by Revoluchat.Grpc.UserClient
-
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

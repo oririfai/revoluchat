@@ -11,20 +11,22 @@ defmodule RevoluchatWeb.UserSocket do
 
   @impl true
   def connect(%{"token" => token, "api_key" => api_key} = _params, socket, _connect_info) do
-    with {:api_key, %ApiKey{app_id: api_key_app_id}} <- {:api_key, Revoluchat.Accounts.get_api_key_by_key(api_key)},
+    with {:api_key, %ApiKey{app_id: api_key_app_id}} <-
+           {:api_key, Revoluchat.Accounts.get_api_key_by_key(api_key)},
          {:token, {:ok, claims}} <- {:token, Revoluchat.Accounts.verify_token(token)},
+         {:app_check, true} <-
+           {:app_check, is_nil(claims.app_id) or claims.app_id == api_key_app_id},
          {:user, {:ok, user}} <- {:user, Revoluchat.Accounts.verify_user_exists(claims.user_id)} do
-      
       user_id = claims.user_id
       # Prioritize app_id from token claims, fallback to API Key app_id
       app_id = claims.app_id || api_key_app_id
-      
+
       # Keep user_id as string (UUID)
       user_id = to_string(user_id)
 
-      # AUTOMATIC REGISTRATION: 
+      # AUTOMATIC REGISTRATION:
       # Inisialisasi data pengguna dan registrasikan ke tabel user_chats jika belum ada
-      # Update juga data profil terbaru (name, phone, avatar)
+      # Update juga data profil terbaru (name, phone, avatar, dll)
       case Revoluchat.Accounts.ensure_user_chat_registered(user_id, app_id, user) do
         {:ok, _user_chat} ->
           socket =
@@ -36,9 +38,12 @@ defmodule RevoluchatWeb.UserSocket do
 
           Logger.info("Socket connected: user_id=#{user_id}, app_id=#{app_id}")
           {:ok, socket}
-        
+
         {:error, reason} ->
-          Logger.error("Socket connection failed: Could not register user #{user_id}. Reason: #{inspect(reason)}")
+          Logger.error(
+            "Socket connection failed: Could not register user #{user_id}. Reason: #{inspect(reason)}"
+          )
+
           :error
       end
     else
@@ -50,8 +55,20 @@ defmodule RevoluchatWeb.UserSocket do
         Logger.error("WebSocket rejected: Token verification failed. Reason: #{inspect(reason)}")
         :error
 
+      {:app_check, false} ->
+        Logger.error("WebSocket rejected: Mismatch between App ID, API Key and Token.")
+        :error
+
       {:user, {:error, :user_not_found}} ->
-        Logger.error("WebSocket rejected: User ID not found in User Service (revolu-be) via gRPC.")
+        Logger.error("WebSocket rejected: User ID not found in User Service.")
+        :error
+
+      {:user, {:error, {:suspended, suspended_until}}} ->
+        Logger.error("WebSocket rejected: User is currently suspended until #{suspended_until}.")
+        :error
+
+      {:user, {:error, :suspended}} ->
+        Logger.error("WebSocket rejected: User is currently suspended.")
         :error
 
       error ->

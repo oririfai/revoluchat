@@ -368,7 +368,17 @@ defmodule RevoluchatWeb.AdminDashboardLive do
         %{"id" => uuid, "duration" => duration, "reason" => reason},
         socket
       ) do
-    case Revoluchat.Grpc.AdminClient.suspend_user(uuid, duration, reason) do
+    mapped_duration =
+      case duration do
+        "1_hour" -> "1h"
+        "12_hours" -> "12h"
+        "1_day" -> "1d"
+        "1_week" -> "1w"
+        "permanent" -> "100y"
+        other -> other
+      end
+
+    case Revoluchat.Accounts.suspend_user(nil, uuid, mapped_duration, reason) do
       {:ok, _response} ->
         {:noreply,
          socket
@@ -385,7 +395,7 @@ defmodule RevoluchatWeb.AdminDashboardLive do
   end
 
   def handle_event("confirm_unsuspend", %{"id" => uuid}, socket) do
-    case Revoluchat.Grpc.AdminClient.unsuspend_user(uuid) do
+    case Revoluchat.Accounts.unsuspend_user(nil, uuid) do
       {:ok, _response} ->
         {:noreply,
          socket
@@ -498,14 +508,43 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     page = socket.assigns.user_page
     status = socket.assigns.user_status
 
-    connected? =
-      case Revoluchat.Accounts.check_active_server_key_connection() do
-        {:ok, :connected} -> true
-        _ -> false
-      end
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      connected? =
+        case Revoluchat.Accounts.check_active_server_key_connection() do
+          {:ok, :connected} -> true
+          _ -> false
+        end
 
-    if connected? do
-      case Revoluchat.Grpc.AdminClient.list_users(search, page, 10, status) do
+      if connected? do
+        case Revoluchat.Accounts.list_admin_users(nil, search, page, 10, status) do
+          {:ok, result} ->
+            socket
+            |> assign(users: result.users)
+            |> assign(user_total_count: result.total_count)
+            |> assign(user_total_pages: result.total_pages)
+            |> assign(user_connection_error: nil)
+
+          {:error, reason} ->
+            Logger.error("Failed to list users: #{inspect(reason)}")
+
+            socket
+            |> assign(users: [])
+            |> assign(user_total_count: 0)
+            |> assign(user_total_pages: 0)
+            |> assign(user_connection_error: "Gagal mengambil data karena koneksi ke server error")
+            |> put_flash(:error, "Gagal mengambil data karena koneksi ke server error")
+        end
+      else
+        socket
+        |> assign(users: [])
+        |> assign(user_total_count: 0)
+        |> assign(user_total_pages: 0)
+        |> assign(user_connection_error: "Gagal mengambil data karena koneksi ke server error")
+        |> put_flash(:error, "Gagal mengambil data karena koneksi ke server error")
+      end
+    else
+      # Normal tier, local DB query, no connection check required
+      case Revoluchat.Accounts.list_admin_users(nil, search, page, 10, status) do
         {:ok, result} ->
           socket
           |> assign(users: result.users)
@@ -514,22 +553,14 @@ defmodule RevoluchatWeb.AdminDashboardLive do
           |> assign(user_connection_error: nil)
 
         {:error, reason} ->
-          Logger.error("Failed to list users: #{inspect(reason)}")
-
+          Logger.error("Failed to list users locally: #{inspect(reason)}")
           socket
           |> assign(users: [])
           |> assign(user_total_count: 0)
           |> assign(user_total_pages: 0)
-          |> assign(user_connection_error: "Gagal mengambil data karena koneksi ke server error")
-          |> put_flash(:error, "Gagal mengambil data karena koneksi ke server error")
+          |> assign(user_connection_error: "Gagal mengambil data dari database lokal")
+          |> put_flash(:error, "Gagal mengambil data dari database lokal")
       end
-    else
-      socket
-      |> assign(users: [])
-      |> assign(user_total_count: 0)
-      |> assign(user_total_pages: 0)
-      |> assign(user_connection_error: "Gagal mengambil data karena koneksi ke server error")
-      |> put_flash(:error, "Gagal mengambil data karena koneksi ke server error")
     end
   end
 
