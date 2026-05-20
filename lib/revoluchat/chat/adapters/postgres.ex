@@ -94,37 +94,55 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
   def insert_message(attrs) do
     changeset = Message.changeset(%Message{}, attrs)
 
-    case Repo.insert(changeset) do
-      {:ok, message} ->
-        update_conversation_activity(attrs.conversation_id, message.id)
-        message = Repo.preload(message, :attachment)
+    Repo.transaction(fn ->
+      case Repo.insert(changeset) do
+        {:ok, message} ->
+          case update_conversation_activity(attrs.conversation_id, message.id) do
+            {1, _} ->
+              message = Repo.preload(message, :attachment)
 
-        attachments =
-          if message.attachment_ids && message.attachment_ids != [] do
-            Repo.all(from(a in Attachment, where: a.id in ^message.attachment_ids))
-          else
-            if message.attachment, do: [message.attachment], else: []
+              attachments =
+                if message.attachment_ids && message.attachment_ids != [] do
+                  Repo.all(from(a in Attachment, where: a.id in ^message.attachment_ids))
+                else
+                  if message.attachment, do: [message.attachment], else: []
+                end
+
+              # Enqueue Webhook
+              %{
+                "event" => "message.created",
+                "payload" => %{
+                  "message_id" => message.id,
+                  "conversation_id" => message.conversation_id,
+                  "sender_id" => message.sender_id,
+                  "body" => message.body,
+                  "type" => message.type,
+                  "attachment_ids" => message.attachment_ids
+                }
+              }
+              |> Revoluchat.Workers.WebhookDispatcher.new()
+              |> Oban.insert()
+
+              {message, attachments}
+
+            _ ->
+              Repo.rollback({:error, :conversation_not_found})
           end
 
-        # Enqueue Webhook
-        %{
-          "event" => "message.created",
-          "payload" => %{
-            "message_id" => message.id,
-            "conversation_id" => message.conversation_id,
-            "sender_id" => message.sender_id,
-            "body" => message.body,
-            "type" => message.type,
-            "attachment_ids" => message.attachment_ids
-          }
-        }
-        |> Revoluchat.Workers.WebhookDispatcher.new()
-        |> Oban.insert()
+        {:error, %Ecto.Changeset{errors: [client_id: _]} = _changeset} ->
+          client_id = attrs[:client_id] || attrs["client_id"]
+          Repo.rollback({:unique_conflict, client_id})
 
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+    |> case do
+      {:ok, {message, attachments}} ->
         {:ok, message, attachments}
 
-      {:error, %Ecto.Changeset{errors: [client_id: _]} = _changeset} ->
-        existing = Repo.get_by!(Message, client_id: attrs[:client_id]) |> Repo.preload(:attachment)
+      {:error, {:unique_conflict, client_id}} ->
+        existing = Repo.get_by!(Message, client_id: client_id) |> Repo.preload(:attachment)
         attachments =
           if existing.attachment_ids && existing.attachment_ids != [] do
             Repo.all(from(a in Attachment, where: a.id in ^existing.attachment_ids))
@@ -133,6 +151,9 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
           end
 
         {:ok, existing, attachments}
+
+      {:error, {:error, reason}} ->
+        {:error, reason}
 
       {:error, changeset} ->
         {:error, changeset}

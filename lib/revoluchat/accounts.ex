@@ -663,12 +663,23 @@ defmodule Revoluchat.Accounts do
         [] -> {:error, "User not found"}
         users ->
           suspended_until = parse_duration(duration)
-          Enum.each(users, fn u -> 
-            u |> UserChat.changeset(%{is_active: false, suspended_until: suspended_until}) |> Repo.update()
+          
+          Repo.transaction(fn ->
+            Enum.each(users, fn u ->
+              case u |> UserChat.changeset(%{is_active: false, suspended_until: suspended_until}) |> Repo.update() do
+                {:ok, _} -> :ok
+                {:error, changeset} -> Repo.rollback(changeset)
+              end
+            end)
           end)
-          # Kick online user WebSocket immediately!
-          RevoluchatWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
-          {:ok, %{success: true, message: "User suspended successfully"}}
+          |> case do
+            {:ok, _} ->
+              # Kick online user WebSocket immediately!
+              RevoluchatWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
+              {:ok, %{success: true, message: "User suspended successfully"}}
+            {:error, changeset} ->
+              {:error, changeset}
+          end
       end
     end
   end
@@ -683,10 +694,20 @@ defmodule Revoluchat.Accounts do
       case Repo.all(query) do
         [] -> {:error, "User not found"}
         users ->
-          Enum.each(users, fn u -> 
-            u |> UserChat.changeset(%{is_active: true, suspended_until: nil}) |> Repo.update()
+          Repo.transaction(fn ->
+            Enum.each(users, fn u ->
+              case u |> UserChat.changeset(%{is_active: true, suspended_until: nil}) |> Repo.update() do
+                {:ok, _} -> :ok
+                {:error, changeset} -> Repo.rollback(changeset)
+              end
+            end)
           end)
-          {:ok, %{success: true, message: "User unsuspended successfully"}}
+          |> case do
+            {:ok, _} ->
+              {:ok, %{success: true, message: "User unsuspended successfully"}}
+            {:error, changeset} ->
+              {:error, changeset}
+          end
       end
     end
   end

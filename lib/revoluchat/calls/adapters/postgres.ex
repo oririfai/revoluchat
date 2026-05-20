@@ -78,9 +78,18 @@ defmodule Revoluchat.Calls.Adapters.Postgres do
     case get_call(app_id, call_id) do
       nil -> {:error, :not_found}
       call ->
-        with {:ok, updated_call} <- update_call(call, %{status: "rejected", ended_at: DateTime.utc_now()}) do
-          record_history(updated_call)
-          {:ok, updated_call}
+        Repo.transaction(fn ->
+          case update_call(call, %{status: "rejected", ended_at: DateTime.utc_now()}) do
+            {:ok, updated_call} ->
+              record_history(updated_call)
+              updated_call
+            {:error, changeset} ->
+              Repo.rollback(changeset)
+          end
+        end)
+        |> case do
+          {:ok, updated_call} -> {:ok, updated_call}
+          {:error, changeset} -> {:error, changeset}
         end
     end
   end
@@ -93,9 +102,18 @@ defmodule Revoluchat.Calls.Adapters.Postgres do
         new_status = if call.status == "connected", do: "completed", else: "missed"
         duration = if call.status == "connected" and call.started_at, do: DateTime.diff(ended_at, call.started_at), else: 0
         
-        with {:ok, updated_call} <- update_call(call, %{status: new_status, ended_at: ended_at, duration_seconds: duration}) do
-          record_history(updated_call)
-          {:ok, updated_call}
+        Repo.transaction(fn ->
+          case update_call(call, %{status: new_status, ended_at: ended_at, duration_seconds: duration}) do
+            {:ok, updated_call} ->
+              record_history(updated_call)
+              updated_call
+            {:error, changeset} ->
+              Repo.rollback(changeset)
+          end
+        end)
+        |> case do
+          {:ok, updated_call} -> {:ok, updated_call}
+          {:error, changeset} -> {:error, changeset}
         end
     end
   end
@@ -104,9 +122,18 @@ defmodule Revoluchat.Calls.Adapters.Postgres do
     case get_call(app_id, call_id) do
       nil -> {:error, :not_found}
       call ->
-        with {:ok, updated_call} <- update_call(call, %{status: "canceled", ended_at: DateTime.utc_now()}) do
-          record_history(updated_call)
-          {:ok, updated_call}
+        Repo.transaction(fn ->
+          case update_call(call, %{status: "canceled", ended_at: DateTime.utc_now()}) do
+            {:ok, updated_call} ->
+              record_history(updated_call)
+              updated_call
+            {:error, changeset} ->
+              Repo.rollback(changeset)
+          end
+        end)
+        |> case do
+          {:ok, updated_call} -> {:ok, updated_call}
+          {:error, changeset} -> {:error, changeset}
         end
     end
   end
@@ -144,8 +171,20 @@ defmodule Revoluchat.Calls.Adapters.Postgres do
   end
 
   defp record_history(%Call{} = call) do
-    common = %{app_id: call.app_id, type: call.type, status: call.status, duration_seconds: call.duration_seconds || 0, started_at: call.started_at, conversation_id: call.conversation_id}
-    %CallHistory{} |> CallHistory.changeset(Map.merge(common, %{user_id: call.caller_id, other_party_id: call.receiver_id, direction: "outgoing"})) |> Repo.insert()
-    %CallHistory{} |> CallHistory.changeset(Map.merge(common, %{user_id: call.receiver_id, other_party_id: call.caller_id, direction: "incoming"})) |> Repo.insert()
+    common = %{
+      app_id: call.app_id,
+      type: call.type,
+      status: call.status,
+      duration_seconds: call.duration_seconds || 0,
+      started_at: call.started_at,
+      conversation_id: call.conversation_id
+    }
+
+    with {:ok, _} <- %CallHistory{} |> CallHistory.changeset(Map.merge(common, %{user_id: call.caller_id, other_party_id: call.receiver_id, direction: "outgoing"})) |> Repo.insert(),
+         {:ok, _} <- %CallHistory{} |> CallHistory.changeset(Map.merge(common, %{user_id: call.receiver_id, other_party_id: call.caller_id, direction: "incoming"})) |> Repo.insert() do
+      :ok
+    else
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
   end
 end
