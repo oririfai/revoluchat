@@ -151,7 +151,7 @@ defmodule Revoluchat.Accounts do
         Logger.info("Full JWKS URL: #{full_url}")
         Logger.info("Mengirim permintaan ke JWKS dengan server_key: #{inspect(server_key.key)}")
 
-        case JokenJwks.HttpFetcher.fetch_signers(full_url, http_max_retries_per_fetch: 0, http_adapter: {Tesla.Adapter.Hackney, [recv_timeout: 500, connect_timeout: 500]}) do
+        case JokenJwks.HttpFetcher.fetch_signers(full_url, http_max_retries_per_fetch: 0, http_adapter: {Tesla.Adapter.Hackney, [recv_timeout: 10000, connect_timeout: 10000]}) do
           {:ok, signers} ->
             Logger.info("Verifikasi manual berhasil! Data yang diterima: #{inspect(signers)}")
             

@@ -13,22 +13,22 @@ services:
     env_file:
       - .env
     environment:
-      - PORT=4000
+      - PORT=${PORT:-4000}
       - MIX_ENV=prod
       - PHX_SERVER=true
       - PHX_HOST=${PHX_HOST:-localhost}
-      - DATABASE_URL=ecto://postgres:postgres@db/revoluchat_prod
-      - MINIO_HOST=minio
-      - MINIO_PUBLIC_HOST=${MINIO_PUBLIC_HOST:-localhost}
-      - MINIO_PORT=9000
+      - DATABASE_URL=${DATABASE_URL:-ecto://postgres:postgres@db/revoluchat_dev}
+      # - MINIO_HOST=minio
+      # - MINIO_PUBLIC_HOST=${MINIO_PUBLIC_HOST:-localhost}
+      # - MINIO_PORT=9000
     command: sh -c "/app/bin/migrate && /app/bin/revoluchat start"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
-      minio:
-        condition: service_started
+      # minio:
+      #   condition: service_started
 
   db:
     image: postgres:15-alpine
@@ -36,9 +36,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=revoluchat_prod
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-revoluchat_dev}
     volumes:
       - revoluchat_pg_data:/var/lib/postgresql/data
     healthcheck:
