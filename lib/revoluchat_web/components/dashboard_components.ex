@@ -21,10 +21,10 @@ defmodule RevoluchatWeb.DashboardComponents do
           "flex items-center flex-shrink-0 px-6 gap-2 mb-8 transition-all duration-300",
           if(@collapsed, do: "justify-center px-2", else: "")
         ]}>
-          <span class="text-primary-600 font-black text-2xl tracking-tighter">R</span>
+          <span class="text-primary-600 font-black text-2xl tracking-tight">A</span>
           <%= if !@collapsed do %>
-            <span class="text-primary-600 font-black text-2xl tracking-tighter -ml-1">EVOLU</span>
-            <span class="text-gray-400 font-light text-xl">CHAT</span>
+            <span class="text-primary-600 font-black text-2xl tracking-tight -ml-1">DMIN</span>
+            <span class="text-gray-400 font-light text-xl ml-1">CENTER</span>
           <% end %>
         </div>
         <nav class="mt-5 flex-1 px-3 space-y-1">
@@ -269,8 +269,8 @@ defmodule RevoluchatWeb.DashboardComponents do
     <header class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 lg:hidden">
       <div class="px-4 py-4 flex justify-between items-center">
         <div class="flex items-center gap-2">
-          <span class="text-primary-600 font-black text-xl tracking-tighter">REVOLU</span>
-          <span class="text-gray-400 font-light text-lg">CHAT</span>
+          <span class="text-primary-600 font-black text-xl tracking-tight">ADMIN</span>
+          <span class="text-gray-400 font-light text-lg ml-1">CENTER</span>
         </div>
       </div>
     </header>

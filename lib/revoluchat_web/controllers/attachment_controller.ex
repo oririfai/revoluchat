@@ -105,10 +105,10 @@ defmodule RevoluchatWeb.AttachmentController do
 
     case Chat.get_approved_attachment_for_user(app_id, id, user_id) do
       {:ok, attachment} ->
-        Logger.info("AttachmentController: Fetching from storage key: #{attachment.storage_key}")
+        Logger.debug("AttachmentController: Fetching from storage key: #{attachment.storage_key}")
         case Revoluchat.Storage.get_object(attachment.storage_key) do
           {:ok, %{body: binary_data, status_code: status} = resp} when status in 200..299 ->
-            Logger.info("AttachmentController: Successfully fetched binary data for #{id}. Size: #{byte_size(binary_data)} bytes. Response: #{inspect(Map.drop(resp, [:body]))}")
+            Logger.debug("AttachmentController: Fetched #{id}. Size: #{byte_size(binary_data)} bytes")
             conn
             |> put_resp_content_type(attachment.mime_type || "application/octet-stream")
             |> put_resp_header("cache-control", "public, max-age=3600")
@@ -123,7 +123,7 @@ defmodule RevoluchatWeb.AttachmentController do
             conn |> put_status(:internal_server_error) |> json(%{error: "Unexpected storage response"})
 
           {:error, {:http_error, 404, _}} ->
-            Logger.info("AttachmentController: Attachment #{id} missing in upstream storage (NoSuchKey). It may have been a failed upload.")
+            Logger.warning("AttachmentController: Attachment #{id} missing in upstream storage (NoSuchKey).")
             conn |> put_status(:not_found) |> json(%{error: "File not found in storage"})
 
           {:error, reason} ->

@@ -38,7 +38,7 @@ defmodule Revoluchat.Grpc.ChatClient do
 
   defp connect do
     target = endpoint()
-    Logger.info("[gRPC] Connecting to Chat Service at #{target}")
+    Logger.debug("[gRPC] Connecting to Chat Service at #{target}")
 
     case GRPC.Stub.connect(target) do
       {:ok, channel} ->
@@ -98,7 +98,7 @@ defmodule Revoluchat.Grpc.ChatClient do
   def list_user_conversations(app_id, user_id, opts \\ []) do
     request = %ListConversationsRequest{app_id: app_id, user_id: ensure_string(user_id)}
 
-    Logger.info(
+    Logger.debug(
       "[gRPC] list_user_conversations - AppID: #{app_id}, UserID: #{user_id}, Archived: #{opts[:archived]}"
     )
 
@@ -110,7 +110,7 @@ defmodule Revoluchat.Grpc.ChatClient do
 
       case rpc_func.(channel, request, metadata: metadata(user_id, app_id)) do
         {:ok, response} ->
-          Logger.info("[gRPC] Received #{length(response.conversations)} conversations")
+          Logger.debug("[gRPC] Received #{length(response.conversations)} conversations")
           response.conversations
 
         {:error, reason} ->

@@ -108,7 +108,7 @@ defmodule Revoluchat.Grpc.UserClient do
       {:ok, channel} ->
         case Stub.get_user(channel, request, metadata: metadata) do
           {:ok, response} ->
-            Logger.info("[gRPC] Success fetching user #{id}: #{inspect(response)}")
+            Logger.debug("[gRPC] Success fetching user #{id}")
             {:ok, parse_response(response)}
 
           {:error, %{status: 5}} -> # NOT_FOUND

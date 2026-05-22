@@ -10,11 +10,10 @@ defmodule RevoluchatWeb.ChatChannel do
 
   @impl true
   def join(topic, _params, socket) do
-    Logger.info("ChatChannel: ENTRY join/3 topic=#{topic}")
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
 
-    Logger.info("ChatChannel: START join topic=#{topic} user_id=#{user_id} app_id=#{app_id}")
+    Logger.info("ChatChannel: join topic=#{topic} user_id=#{user_id}")
 
     try do
       case String.split(topic, ":") do
@@ -1079,7 +1078,7 @@ defmodule RevoluchatWeb.ChatChannel do
 
     Logger.debug("ChatChannel: Processing new message with attrs: #{inspect(attrs)}")
 
-    Logger.info("ChatChannel: Processing new_message payload: #{inspect(payload)}")
+    Logger.debug("ChatChannel: Processing new_message payload: #{inspect(payload)}")
 
     case Chat.insert_message(attrs) do
       {:ok, message, attachments} ->

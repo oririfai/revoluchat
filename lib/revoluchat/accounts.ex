@@ -147,13 +147,13 @@ defmodule Revoluchat.Accounts do
         query = URI.decode_query(uri.query || "") |> Map.put("server_key", server_key.key)
         full_url = URI.to_string(%URI{uri | query: URI.encode_query(query)})
 
-        Logger.info("Memulai verifikasi manual JWKS: #{inspect(server_key)}")
-        Logger.info("Full JWKS URL: #{full_url}")
-        Logger.info("Mengirim permintaan ke JWKS dengan server_key: #{inspect(server_key.key)}")
+        Logger.debug("Memulai verifikasi manual JWKS dengan server_key ID: #{server_key.id}")
+        Logger.debug("Full JWKS URL: #{full_url}")
+        Logger.debug("Mengirim permintaan ke JWKS dengan server_key: #{inspect(server_key.key)}")
 
         case JokenJwks.HttpFetcher.fetch_signers(full_url, http_max_retries_per_fetch: 0, http_adapter: {Tesla.Adapter.Hackney, [recv_timeout: 10000, connect_timeout: 10000]}) do
           {:ok, signers} ->
-            Logger.info("Verifikasi manual berhasil! Data yang diterima: #{inspect(signers)}")
+            Logger.debug("Verifikasi manual berhasil! Jumlah signer: #{length(signers)}")
             
             if (is_list(signers) and length(signers) > 0) or (is_map(signers) and map_size(signers) > 0) do
               set_active_server_key(id)
@@ -189,11 +189,11 @@ defmodule Revoluchat.Accounts do
   Returns {:ok, user_id} dimana user_id adalah integer.
   """
   def verify_token(token_string) do
-    Logger.info("Memulai validasi token: #{inspect(token_string)}")
+    Logger.debug("Memulai validasi token (length: #{String.length(token_string)})")
 
     case Token.verify_access_token(token_string) do
       {:ok, claims} ->
-        Logger.info("Token valid dengan klaim: #{inspect(claims)}")
+        Logger.debug("Token valid untuk user_id: #{claims[:user_id]}")
         {:ok, claims}
 
       {:error, reason} ->
@@ -307,7 +307,6 @@ defmodule Revoluchat.Accounts do
   def list_registered_users_by_ids(app_id, user_ids) do
     valid_ids = Enum.filter(user_ids, fn id -> is_binary(id) && id != "" end)
     tier = to_string(Application.get_env(:revoluchat, :tier_type))
-    IO.inspect({tier, valid_ids}, label: "list_registered_users_by_ids debug")
 
     if tier == "advance" do
       # Advance Tier: Fetch from Go Backend using get_users/1

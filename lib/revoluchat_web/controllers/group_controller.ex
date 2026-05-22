@@ -164,9 +164,8 @@ defmodule RevoluchatWeb.GroupController do
       end) || Map.get(group, :my_status))
     }
     |> tap(fn result -> 
-      member_ids = Enum.map(group.members || [], & &1.user_id)
       last_msg_inserted_at = if result[:last_message], do: result[:last_message].inserted_at, else: "N/A"
-      Logger.info("[GroupController] Formatted group #{group.id} for user #{current_user_id}. My Status: #{result[:my_status]}. Last Message Date: #{last_msg_inserted_at}. Members in list: #{inspect(member_ids)}")
+      Logger.debug("[GroupController] Formatted group #{group.id} for user #{current_user_id}. last_message: #{last_msg_inserted_at}")
     end)
   end
 

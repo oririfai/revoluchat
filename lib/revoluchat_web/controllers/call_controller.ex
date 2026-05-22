@@ -5,7 +5,7 @@ defmodule RevoluchatWeb.CallController do
 
   def history(conn, params) do
     require Logger
-    Logger.info("CallController: Fetching history for user #{conn.assigns.current_user_id} (App: #{conn.assigns.current_app_id})")
+    Logger.debug("CallController: Fetching history for user #{conn.assigns.current_user_id} (App: #{conn.assigns.current_app_id})")
     
     user_id = conn.assigns.current_user_id
     app_id = conn.assigns.current_app_id

@@ -14,7 +14,7 @@ defmodule RevoluchatWeb.ConversationController do
     archived = Map.get(params, "archived") == "true"
     
     require Logger
-    Logger.info("[ConversationController] index - Archived: #{archived}, Params: #{inspect(params)}")
+    Logger.debug("[ConversationController] index - Archived: #{archived}")
 
     conversations =
       Chat.list_user_conversations(app_id, user_id, search: search_term, archived: archived)
@@ -168,8 +168,6 @@ defmodule RevoluchatWeb.ConversationController do
     # other_user_id should be a string (UUID)
     other_user_id = to_string(other_user_id)
 
-    IO.inspect({app_id, user_id, other_user_id}, label: "ConversationController.create params")
-    
     # We allow starting a chat if the target user is already a contact 
     # OR if they are a registered user (to support sync discovery)
     is_cont = Accounts.is_contact?(app_id, user_id, other_user_id)

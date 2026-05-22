@@ -8,6 +8,7 @@ defmodule RevoluchatWeb.Plugs.AuthPlug do
   import Phoenix.Controller, only: [json: 2]
 
   alias Revoluchat.Accounts
+  require Logger
 
   def init(opts), do: opts
 
@@ -26,18 +27,17 @@ defmodule RevoluchatWeb.Plugs.AuthPlug do
         _ -> conn.query_params["api_key"]
       end
 
-    require Logger
-    Logger.info("AuthPlug: Examining request. Query String: #{inspect(conn.query_string)}")
+    Logger.debug("AuthPlug: Examining request. Path: #{conn.request_path}")
 
-    Logger.info(
+    Logger.debug(
       "AuthPlug: Extracted Token: #{if token, do: "Present (length #{String.length(token)})", else: "nil"}"
     )
 
-    Logger.info("AuthPlug: Extracted API Key: #{inspect(api_key)}")
+    Logger.debug("AuthPlug: Extracted API Key: #{if api_key, do: "Present", else: "nil"}")
 
     with t when not is_nil(t) <- token,
          k when not is_nil(k) <- api_key do
-      Logger.info("AuthPlug: Found Token and API Key. Verifying API Key...")
+      Logger.debug("AuthPlug: Found Token and API Key. Verifying...")
 
       case Accounts.get_api_key_by_key(k) do
         nil ->
