@@ -20,7 +20,10 @@ defmodule RevoluchatWeb.ChatChannel do
       case String.split(topic, ":") do
         ["tenant", topic_app_id, "room", conversation_id] ->
           if topic_app_id != app_id do
-            Logger.error("ChatChannel JOIN FAILED: Tenant mismatch. Socket app_id=#{app_id}, Topic app_id=#{topic_app_id}")
+            Logger.error(
+              "ChatChannel JOIN FAILED: Tenant mismatch. Socket app_id=#{app_id}, Topic app_id=#{topic_app_id}"
+            )
+
             {:error, %{reason: "tenant_mismatch"}}
           else
             join_conversation(topic_app_id, conversation_id, app_id, user_id, socket)
@@ -28,7 +31,10 @@ defmodule RevoluchatWeb.ChatChannel do
 
         ["tenant", topic_app_id, "group", group_id] ->
           if topic_app_id != app_id do
-            Logger.error("ChatChannel JOIN FAILED: Tenant mismatch. Socket app_id=#{app_id}, Topic app_id=#{topic_app_id}")
+            Logger.error(
+              "ChatChannel JOIN FAILED: Tenant mismatch. Socket app_id=#{app_id}, Topic app_id=#{topic_app_id}"
+            )
+
             {:error, %{reason: "tenant_mismatch"}}
           else
             join_group(topic_app_id, group_id, app_id, user_id, socket)
@@ -88,14 +94,17 @@ defmodule RevoluchatWeb.ChatChannel do
     case {conversation_id, group_id} do
       {conv_id, nil} when not is_nil(conv_id) ->
         case Chat.get_conversation_for_user(app_id, conv_id, user_id) do
-          {:ok, _} -> 
+          {:ok, _} ->
             check_rate_and_process(payload, conv_id, nil, user_id, socket)
-          {:error, :not_found} -> 
+
+          {:error, :not_found} ->
             {:reply, {:error, %{reason: "unauthorized"}}, socket}
         end
+
       {nil, grp_id} when not is_nil(grp_id) ->
         # For groups, we delegate validation to the backend
         check_rate_and_process(payload, nil, grp_id, user_id, socket)
+
       _ ->
         {:reply, {:error, %{reason: "unauthorized"}}, socket}
     end
@@ -108,7 +117,7 @@ defmodule RevoluchatWeb.ChatChannel do
 
       # Only broadcast if not already marked as typing in this session
       # We use Presence to track the state
-      already_typing = 
+      already_typing =
         Presence.list(socket)
         |> Map.get(to_string(user_id))
         |> case do
@@ -136,7 +145,7 @@ defmodule RevoluchatWeb.ChatChannel do
     if_authorized(socket, fn ->
       user_id = socket.assigns.user_id
 
-      is_typing = 
+      is_typing =
         Presence.list(socket)
         |> Map.get(to_string(user_id))
         |> case do
@@ -158,7 +167,6 @@ defmodule RevoluchatWeb.ChatChannel do
       {:noreply, socket}
     end)
   end
-
 
   @impl true
   def handle_in("mark_read", %{"message_id" => message_id}, socket) do
@@ -217,6 +225,7 @@ defmodule RevoluchatWeb.ChatChannel do
       case Chat.soft_delete_message(app_id, message_id, user_id) do
         {:ok, message} ->
           Logger.info("ChatChannel: Message #{message_id} soft deleted successfully")
+
           broadcast!(socket, "message_deleted", %{
             message_id: message_id,
             deleted_at: DateTime.to_iso8601(message.deleted_at)
@@ -225,11 +234,17 @@ defmodule RevoluchatWeb.ChatChannel do
           {:reply, :ok, socket}
 
         {:error, :unauthorized} ->
-          Logger.warning("ChatChannel: Unauthorized delete attempt by User #{user_id} for message #{message_id}")
+          Logger.warning(
+            "ChatChannel: Unauthorized delete attempt by User #{user_id} for message #{message_id}"
+          )
+
           {:reply, {:error, %{reason: "unauthorized"}}, socket}
 
         {:error, reason} ->
-          Logger.error("ChatChannel: Failed to delete message #{message_id}. Reason: #{inspect(reason)}")
+          Logger.error(
+            "ChatChannel: Failed to delete message #{message_id}. Reason: #{inspect(reason)}"
+          )
+
           {:reply, {:error, %{reason: "not_found"}}, socket}
       end
     end)
@@ -241,7 +256,9 @@ defmodule RevoluchatWeb.ChatChannel do
       user_id = socket.assigns.user_id
       app_id = socket.assigns.app_id
 
-      Logger.info("ChatChannel: User #{user_id} requesting bulk delete for #{length(message_ids)} messages")
+      Logger.info(
+        "ChatChannel: User #{user_id} requesting bulk delete for #{length(message_ids)} messages"
+      )
 
       case Chat.soft_delete_messages(app_id, message_ids, user_id) do
         {:ok, count} ->
@@ -277,7 +294,7 @@ defmodule RevoluchatWeb.ChatChannel do
       ]
 
       messages = Chat.list_messages(app_id, conversation_id, socket.assigns.user_id, opts)
-      
+
       # Enrichment logic similar to finish_join
       sender_ids = Enum.map(messages, & &1.sender_id) |> Enum.uniq()
       users_data = Revoluchat.Accounts.list_registered_users_by_ids(app_id, sender_ids)
@@ -298,15 +315,17 @@ defmodule RevoluchatWeb.ChatChannel do
           %{}
         end
 
-      formatted_messages = Enum.map(messages, fn m ->
-        m_atts = (m.attachment_ids || [])
-          |> Enum.map(&Map.get(attachments_map, &1))
-          |> Enum.concat([Map.get(attachments_map, m.attachment_id)])
-          |> Enum.reject(&is_nil/1)
-          |> Enum.uniq_by(& &1.id)
+      formatted_messages =
+        Enum.map(messages, fn m ->
+          m_atts =
+            (m.attachment_ids || [])
+            |> Enum.map(&Map.get(attachments_map, &1))
+            |> Enum.concat([Map.get(attachments_map, m.attachment_id)])
+            |> Enum.reject(&is_nil/1)
+            |> Enum.uniq_by(& &1.id)
 
-        format_message_with_user(m, users_map, m_atts, socket)
-      end)
+          format_message_with_user(m, users_map, m_atts, socket)
+        end)
 
       {:reply, {:ok, %{messages: formatted_messages}}, socket}
     end)
@@ -333,8 +352,22 @@ defmodule RevoluchatWeb.ChatChannel do
           case Chat.get_conversation_for_user(app_id, conv_id, user_id) do
             {:ok, conversation} ->
               # Automatically identify receiver if not provided by SDK
-              receiver_id = receiver_id || (if conversation.user_a_id == user_id, do: conversation.user_b_id, else: conversation.user_a_id)
-              initiate_and_broadcast_call(app_id, conv_id, nil, user_id, receiver_id, call_type, socket)
+              receiver_id =
+                receiver_id ||
+                  if conversation.user_a_id == user_id,
+                    do: conversation.user_b_id,
+                    else: conversation.user_a_id
+
+              initiate_and_broadcast_call(
+                app_id,
+                conv_id,
+                nil,
+                user_id,
+                receiver_id,
+                call_type,
+                socket
+              )
+
             _ ->
               {:reply, {:error, %{reason: "unauthorized"}}, socket}
           end
@@ -348,7 +381,6 @@ defmodule RevoluchatWeb.ChatChannel do
       end
     end)
   end
-
 
   @impl true
   def handle_in("call:ringing", %{"call_id" => call_id}, socket) do
@@ -364,6 +396,7 @@ defmodule RevoluchatWeb.ChatChannel do
   def handle_in("call:respond", %{"call_id" => call_id, "response" => action}, socket) do
     with_call_auth(socket, call_id, fn ->
       app_id = socket.assigns.app_id
+
       case action do
         "accept" ->
           case Calls.accept_call(app_id, call_id) do
@@ -385,17 +418,22 @@ defmodule RevoluchatWeb.ChatChannel do
                 )
 
               # Generate LiveKit Tokens
-              livekit_url = Application.get_env(:revoluchat, :livekit)[:url] || System.get_env("LIVEKIT_URL") || "ws://localhost:7880"
-              
+              livekit_url =
+                Application.get_env(:revoluchat, :livekit)[:url] || System.get_env("LIVEKIT_URL") ||
+                  "ws://localhost:7880"
+
               # Unified token generation: caller always gets one, receiver gets one if present
-              {:ok, caller_token} = Revoluchat.LiveKit.Token.generate(call_id, call.caller_id, caller_display_name)
-              
-              # For Group Calls, call.receiver_id is 0 or nil. 
+              {:ok, caller_token} =
+                Revoluchat.LiveKit.Token.generate(call_id, call.caller_id, caller_display_name)
+
+              # For Group Calls, call.receiver_id is 0 or nil.
               # We generate a token for the CURRENT user who is accepting.
               current_user_id = socket.assigns.user_id
-              current_user_name = receiver_display_name # This was fetched based on current_user in Calls.accept_call context
-              
-              {:ok, current_user_token} = Revoluchat.LiveKit.Token.generate(call_id, current_user_id, current_user_name)
+              # This was fetched based on current_user in Calls.accept_call context
+              current_user_name = receiver_display_name
+
+              {:ok, current_user_token} =
+                Revoluchat.LiveKit.Token.generate(call_id, current_user_id, current_user_name)
 
               # Generate CoTURN credentials dynamically
               coturn_caller = Revoluchat.RTC.TurnCredentials.generate(call.caller_id)
@@ -472,12 +510,12 @@ defmodule RevoluchatWeb.ChatChannel do
     end)
   end
 
-
   @impl true
   def handle_in("call:hangup", %{"call_id" => call_id} = _payload, socket) do
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
     Logger.info("ChatChannel: Received call:hangup for call #{call_id} from user #{user_id}")
+
     case String.starts_with?(call_id, "pending-") do
       true ->
         # For pending calls, notify room and all participants globally
@@ -487,53 +525,81 @@ defmodule RevoluchatWeb.ChatChannel do
         payload = %{call_id: call_id, status: "missed"}
 
         broadcast_from!(socket, "call:hangup", payload)
-        
+
         if group_id do
           case Chat.get_group(app_id, group_id) do
             {:ok, group} ->
               Enum.each(group.members, fn member ->
                 if to_string(member.user_id) != to_string(user_id) do
-                  RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "call:hangup", payload)
+                  RevoluchatWeb.Endpoint.broadcast(
+                    "user:#{member.user_id}",
+                    "call:hangup",
+                    payload
+                  )
                 end
               end)
-            _ -> :ok
+
+            _ ->
+              :ok
           end
         end
+
         {:reply, :ok, socket}
-      
+
       false ->
         with_call_auth(socket, call_id, fn ->
           app_id = socket.assigns.app_id
+
           case Calls.complete_call(app_id, call_id) do
             {:ok, call} ->
               # 1. Broadcast to Room
-              payload = %{"call_id" => call_id, "status" => call.status, "conversation_id" => call.conversation_id}
+              payload = %{
+                "call_id" => call_id,
+                "status" => call.status,
+                "conversation_id" => call.conversation_id
+              }
+
               Logger.info("ChatChannel: Broadcasting call:hangup to room. Status: #{call.status}")
               broadcast_from!(socket, "call:hangup", payload)
 
               # 2. Global signaling for all participants
               is_group = call.group_id && call.group_id != ""
-              Logger.info("ChatChannel: Global signaling. IsGroup: #{is_group}, GroupID: #{call.group_id}")
-              
+
+              Logger.info(
+                "ChatChannel: Global signaling. IsGroup: #{is_group}, GroupID: #{call.group_id}"
+              )
+
               if is_group do
                 case Chat.get_group(app_id, call.group_id) do
                   {:ok, group} ->
                     members = Enum.map(group.members, fn m -> to_string(m.user_id) end)
                     Logger.info("ChatChannel: Group members for hangup: #{inspect(members)}")
+
                     Enum.each(group.members, fn member ->
                       topic = "user:#{member.user_id}"
-                      Logger.info("ChatChannel: Broadcasting hangup to group member topic: #{topic}")
+
+                      Logger.info(
+                        "ChatChannel: Broadcasting hangup to group member topic: #{topic}"
+                      )
+
                       RevoluchatWeb.Endpoint.broadcast(topic, "call:hangup", payload)
                     end)
-                  _ -> 
-                    Logger.warning("ChatChannel: Group #{call.group_id} not found for hangup signaling")
+
+                  _ ->
+                    Logger.warning(
+                      "ChatChannel: Group #{call.group_id} not found for hangup signaling"
+                    )
                 end
               else
                 caller_topic = "user:#{call.caller_id}"
                 receiver_topic = "user:#{call.receiver_id}"
-                
-                Logger.info("ChatChannel: Broadcasting hangup to private topics: #{caller_topic} and #{receiver_topic}")
+
+                Logger.info(
+                  "ChatChannel: Broadcasting hangup to private topics: #{caller_topic} and #{receiver_topic}"
+                )
+
                 RevoluchatWeb.Endpoint.broadcast!(caller_topic, "call:hangup", payload)
+
                 if call.receiver_id && call.receiver_id != 0 do
                   RevoluchatWeb.Endpoint.broadcast!(receiver_topic, "call:hangup", payload)
                 end
@@ -553,74 +619,122 @@ defmodule RevoluchatWeb.ChatChannel do
     user_id = socket.assigns.user_id
     app_id = socket.assigns.app_id
     Logger.info("ChatChannel: Received call:cancel for call #{call_id} from user #{user_id}")
+
     case String.starts_with?(call_id, "pending-") do
       true ->
         # For pending calls, we still want to notify the other party
         app_id = socket.assigns.app_id
         conversation_id = socket.assigns[:conversation_id]
         user_id = socket.assigns.user_id
-        
+
         cancel_payload = %{call_id: call_id, status: "missed"}
         broadcast_from!(socket, "call:cancel", cancel_payload)
-        
+
         if conversation_id do
-           case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
-             {:ok, conv} ->
-               receiver_id = if conv.user_a_id == user_id, do: conv.user_b_id, else: conv.user_a_id
-               RevoluchatWeb.Endpoint.broadcast!("user:#{receiver_id}", "call:cancel", cancel_payload)
-             _ -> :ok
-           end
+          case Chat.get_conversation_for_user(app_id, conversation_id, user_id) do
+            {:ok, conv} ->
+              receiver_id = if conv.user_a_id == user_id, do: conv.user_b_id, else: conv.user_a_id
+
+              RevoluchatWeb.Endpoint.broadcast!(
+                "user:#{receiver_id}",
+                "call:cancel",
+                cancel_payload
+              )
+
+            _ ->
+              :ok
+          end
         end
 
         group_id = socket.assigns[:group_id]
+
         if group_id do
-           case Chat.get_group(app_id, group_id) do
-             {:ok, group} ->
-               Enum.each(group.members, fn member ->
-                 if to_string(member.user_id) != to_string(user_id) do
-                   RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "call:cancel", cancel_payload)
-                 end
-               end)
-             _ -> :ok
-           end
+          case Chat.get_group(app_id, group_id) do
+            {:ok, group} ->
+              Enum.each(group.members, fn member ->
+                if to_string(member.user_id) != to_string(user_id) do
+                  RevoluchatWeb.Endpoint.broadcast(
+                    "user:#{member.user_id}",
+                    "call:cancel",
+                    cancel_payload
+                  )
+                end
+              end)
+
+            _ ->
+              :ok
+          end
         end
-        
+
         {:reply, :ok, socket}
-      
+
       false ->
         with_call_auth(socket, call_id, fn ->
           app_id = socket.assigns.app_id
+
           case Calls.cancel_call(app_id, call_id) do
-        {:ok, call} ->
-           payload = %{ "call_id" => call_id, "status" => "missed", "conversation_id" => call.conversation_id }
-           Logger.info("ChatChannel: Broadcasting call:cancel to room. Status: missed")
-           broadcast_from!(socket, "call:cancel", payload)
-           
-           # Notify other parties globally
-           is_group = call.group_id && call.group_id != ""
-           Logger.info("ChatChannel: Global cancel signaling. IsGroup: #{is_group}, GroupID: #{call.group_id}")
-           
-           if is_group do
-             case Chat.get_group(app_id, call.group_id) do
-               {:ok, group} ->
-                 members = Enum.map(group.members, fn m -> to_string(m.user_id) end)
-                 Logger.info("ChatChannel: Group members for cancel: #{inspect(members)}")
-                 Enum.each(group.members, fn member ->
-                   topic = "user:#{member.user_id}"
-                   Logger.info("ChatChannel: Broadcasting cancel to group member topic: #{topic}")
-                   RevoluchatWeb.Endpoint.broadcast(topic, "call:cancel", payload)
-                 end)
-               _ -> 
-                 Logger.warning("ChatChannel: Group #{call.group_id} not found for cancel signaling")
-             end
-           else
-             Logger.info("ChatChannel: Broadcasting cancel to private topic user:#{call.receiver_id}")
-             if call.receiver_id != 0, do: RevoluchatWeb.Endpoint.broadcast!("user:#{call.receiver_id}", "call:cancel", payload)
-             if call.caller_id != 0, do: RevoluchatWeb.Endpoint.broadcast!("user:#{call.caller_id}", "call:cancel", payload)
-           end
-           
-           insert_call_summary(call, socket)
-           {:reply, :ok, socket}
+            {:ok, call} ->
+              payload = %{
+                "call_id" => call_id,
+                "status" => "missed",
+                "conversation_id" => call.conversation_id
+              }
+
+              Logger.info("ChatChannel: Broadcasting call:cancel to room. Status: missed")
+              broadcast_from!(socket, "call:cancel", payload)
+
+              # Notify other parties globally
+              is_group = call.group_id && call.group_id != ""
+
+              Logger.info(
+                "ChatChannel: Global cancel signaling. IsGroup: #{is_group}, GroupID: #{call.group_id}"
+              )
+
+              if is_group do
+                case Chat.get_group(app_id, call.group_id) do
+                  {:ok, group} ->
+                    members = Enum.map(group.members, fn m -> to_string(m.user_id) end)
+                    Logger.info("ChatChannel: Group members for cancel: #{inspect(members)}")
+
+                    Enum.each(group.members, fn member ->
+                      topic = "user:#{member.user_id}"
+
+                      Logger.info(
+                        "ChatChannel: Broadcasting cancel to group member topic: #{topic}"
+                      )
+
+                      RevoluchatWeb.Endpoint.broadcast(topic, "call:cancel", payload)
+                    end)
+
+                  _ ->
+                    Logger.warning(
+                      "ChatChannel: Group #{call.group_id} not found for cancel signaling"
+                    )
+                end
+              else
+                Logger.info(
+                  "ChatChannel: Broadcasting cancel to private topic user:#{call.receiver_id}"
+                )
+
+                if call.receiver_id != 0,
+                  do:
+                    RevoluchatWeb.Endpoint.broadcast!(
+                      "user:#{call.receiver_id}",
+                      "call:cancel",
+                      payload
+                    )
+
+                if call.caller_id != 0,
+                  do:
+                    RevoluchatWeb.Endpoint.broadcast!(
+                      "user:#{call.caller_id}",
+                      "call:cancel",
+                      payload
+                    )
+              end
+
+              insert_call_summary(call, socket)
+              {:reply, :ok, socket}
           end
         end)
     end
@@ -642,16 +756,20 @@ defmodule RevoluchatWeb.ChatChannel do
       {:ok, group} ->
         # Notify all members about the new group - format per user to ensure correct my_status (pending vs accepted)
         Enum.each(group.members, fn member ->
-          formatted_group = RevoluchatWeb.GroupController.format_group(group, app_id, member.user_id)
+          formatted_group =
+            RevoluchatWeb.GroupController.format_group(group, app_id, member.user_id)
+
           RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", %{
             conversation_id: group.id,
             type: "group",
             group: formatted_group
           })
         end)
+
         # For the creator's reply, use their own formatted group
         creator_formatted = RevoluchatWeb.GroupController.format_group(group, app_id, user_id)
         {:reply, {:ok, creator_formatted}, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -663,9 +781,9 @@ defmodule RevoluchatWeb.ChatChannel do
     role = params["role"] || "member"
 
     raw_id = clean_id(group_id)
-    
+
     # Sync members to Advance tier first
-    Enum.each(user_ids, fn uid -> 
+    Enum.each(user_ids, fn uid ->
       Revoluchat.Accounts.sync_user_profile_to_advance_tier(app_id, uid)
     end)
 
@@ -673,22 +791,27 @@ defmodule RevoluchatWeb.ChatChannel do
       {:ok, _} ->
         # Notify existing room
         broadcast!(socket, "members_added", %{group_id: group_id, user_ids: user_ids, role: role})
-        
+
         # Notify new members via their personal channels
         case Chat.get_group(app_id, raw_id) do
           {:ok, group} ->
             Enum.each(user_ids, fn member_id ->
-              formatted_for_member = RevoluchatWeb.GroupController.format_group(group, app_id, member_id)
+              formatted_for_member =
+                RevoluchatWeb.GroupController.format_group(group, app_id, member_id)
+
               RevoluchatWeb.Endpoint.broadcast("user:#{member_id}", "conversation_updated", %{
                 conversation_id: group_id,
                 type: "group",
                 group: formatted_for_member
               })
             end)
-          _ -> :ok
+
+          _ ->
+            :ok
         end
 
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -702,6 +825,7 @@ defmodule RevoluchatWeb.ChatChannel do
       {:ok, _} ->
         broadcast!(socket, "member_removed", %{group_id: group_id, user_id: target_id})
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -713,9 +837,12 @@ defmodule RevoluchatWeb.ChatChannel do
 
     case Chat.update_group(app_id, group_id, params) do
       {:ok, group} ->
-        formatted_group = RevoluchatWeb.GroupController.format_group(group, app_id, socket.assigns.user_id)
+        formatted_group =
+          RevoluchatWeb.GroupController.format_group(group, app_id, socket.assigns.user_id)
+
         broadcast!(socket, "group_updated", formatted_group)
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -730,6 +857,7 @@ defmodule RevoluchatWeb.ChatChannel do
       :ok ->
         broadcast!(socket, "member_left", %{group_id: group_id, user_id: user_id})
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -747,7 +875,9 @@ defmodule RevoluchatWeb.ChatChannel do
           conversation_id: group_id,
           type: "group"
         })
+
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -761,6 +891,7 @@ defmodule RevoluchatWeb.ChatChannel do
     case Chat.mute_group(app_id, group_id, user_id, mute) do
       :ok ->
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -774,6 +905,7 @@ defmodule RevoluchatWeb.ChatChannel do
       {:ok, _} ->
         broadcast!(socket, "group_deleted", %{group_id: group_id})
         {:reply, :ok, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: inspect(reason)}}, socket}
     end
@@ -792,6 +924,7 @@ defmodule RevoluchatWeb.ChatChannel do
         # Check group authorization
         # For now, we trust the socket if join_group succeeded
         callback.()
+
       conv_id ->
         case Chat.get_conversation_for_user(app_id, conv_id, user_id) do
           {:ok, _} -> callback.()
@@ -803,10 +936,12 @@ defmodule RevoluchatWeb.ChatChannel do
   defp clean_id(id) when is_binary(id) do
     id |> String.replace(~r/^(group_|room_)/, "")
   end
+
   defp clean_id(id), do: id
 
   defp join_conversation(_topic_app_id, conversation_id, app_id, user_id, socket) do
     raw_id = clean_id(conversation_id)
+
     if String.starts_with?(conversation_id, "group_") do
       case Chat.get_group(app_id, raw_id) do
         {:ok, group} ->
@@ -815,10 +950,16 @@ defmodule RevoluchatWeb.ChatChannel do
               socket = assign(socket, :group_id, conversation_id)
               messages = Chat.list_messages(app_id, nil, user_id, group_id: raw_id, limit: 50)
               formatted_group = RevoluchatWeb.GroupController.format_group(group, app_id, user_id)
-              finish_join(messages, app_id, nil, user_id, socket, %{group: formatted_group, my_status: member.status})
+
+              finish_join(messages, app_id, nil, user_id, socket, %{
+                group: formatted_group,
+                my_status: member.status
+              })
+
             nil ->
               {:error, %{reason: "unauthorized"}}
           end
+
         _ ->
           {:error, %{reason: "group_not_found"}}
       end
@@ -842,14 +983,16 @@ defmodule RevoluchatWeb.ChatChannel do
     raw_id = clean_id(group_id)
     socket = assign(socket, :group_id, group_id)
     messages = Chat.list_messages(app_id, nil, user_id, group_id: raw_id, limit: 50)
-    
+
     # Fetch group metadata to return to client
-    group_meta = 
+    group_meta =
       case Chat.get_group(app_id, raw_id) do
-        {:ok, g} -> 
+        {:ok, g} ->
           formatted = RevoluchatWeb.GroupController.format_group(g, app_id, user_id)
           %{group: formatted, my_status: formatted.my_status}
-        _ -> %{}
+
+        _ ->
+          %{}
       end
 
     finish_join(messages, app_id, group_id, user_id, socket, group_meta)
@@ -878,21 +1021,24 @@ defmodule RevoluchatWeb.ChatChannel do
     send(self(), :after_join)
     Logger.info("ChatChannel: User #{user_id} joined #{target_id}")
 
-    reply = 
+    reply =
       extra_meta
-      |> Map.put(:messages, Enum.map(messages, fn m ->
-        m_atts = (m.attachment_ids || [])
-          |> Enum.map(&Map.get(attachments_map, &1))
-          |> Enum.concat([Map.get(attachments_map, m.attachment_id)])
-          |> Enum.reject(&is_nil/1)
-          |> Enum.uniq_by(& &1.id)
+      |> Map.put(
+        :messages,
+        Enum.map(messages, fn m ->
+          m_atts =
+            (m.attachment_ids || [])
+            |> Enum.map(&Map.get(attachments_map, &1))
+            |> Enum.concat([Map.get(attachments_map, m.attachment_id)])
+            |> Enum.reject(&is_nil/1)
+            |> Enum.uniq_by(& &1.id)
 
-        format_message_with_user(m, users_map, m_atts, socket)
-      end))
+          format_message_with_user(m, users_map, m_atts, socket)
+        end)
+      )
 
     {:ok, reply, socket}
   end
-
 
   defp process_new_message(payload, conversation_id, group_id, user_id, socket) do
     app_id = socket.assigns.app_id
@@ -958,42 +1104,80 @@ defmodule RevoluchatWeb.ChatChannel do
         # 3. Broadcast conversation_updated or group_updated
         if conversation_id do
           {:ok, conversation} = Chat.get_conversation_for_user(app_id, conversation_id, user_id)
-          update_payload = %{conversation_id: conversation_id, last_message: formatted_message, unread_count_update: 1}
-          
-          RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_a_id}", "conversation_updated", update_payload)
-          RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_b_id}", "conversation_updated", update_payload)
+
+          update_payload = %{
+            conversation_id: conversation_id,
+            last_message: formatted_message,
+            unread_count_update: 1
+          }
+
+          RevoluchatWeb.Endpoint.broadcast(
+            "user:#{conversation.user_a_id}",
+            "conversation_updated",
+            update_payload
+          )
+
+          RevoluchatWeb.Endpoint.broadcast(
+            "user:#{conversation.user_b_id}",
+            "conversation_updated",
+            update_payload
+          )
 
           # FCM Push for Conversations
-          receiver_id = if message.sender_id == conversation.user_a_id, do: conversation.user_b_id, else: conversation.user_a_id
+          receiver_id =
+            if message.sender_id == conversation.user_a_id,
+              do: conversation.user_b_id,
+              else: conversation.user_a_id
+
           topic_name = "tenant:#{app_id}:room:#{conversation_id}"
           presence_list = Presence.list(topic_name)
-          is_receiver_online = Map.has_key?(presence_list, receiver_id) || Map.has_key?(presence_list, to_string(receiver_id))
-          
+
+          is_receiver_online =
+            Map.has_key?(presence_list, receiver_id) ||
+              Map.has_key?(presence_list, to_string(receiver_id))
+
           if not is_receiver_online do
-            %{"app_id" => app_id, "user_id" => receiver_id, "conversation_id" => conversation_id, "message" => formatted_message}
+            %{
+              "app_id" => app_id,
+              "user_id" => receiver_id,
+              "conversation_id" => conversation_id,
+              "message" => formatted_message
+            }
             |> Revoluchat.Workers.FcmPushWorker.new()
             |> Oban.insert()
           end
         else
           # Group Update
           # We need to notify all members so their conversation list updates (unread count, last message)
-          formatted_group_id = if String.starts_with?(group_id, "group_"), do: group_id, else: "group_#{group_id}"
+          formatted_group_id =
+            if String.starts_with?(group_id, "group_"), do: group_id, else: "group_#{group_id}"
+
           {:ok, group} = Chat.get_group(app_id, group_id)
-          update_payload = %{conversation_id: formatted_group_id, last_message: formatted_message, unread_count_update: 1, type: "group"}
-          
+
+          update_payload = %{
+            conversation_id: formatted_group_id,
+            last_message: formatted_message,
+            unread_count_update: 1,
+            type: "group"
+          }
+
           Enum.each(group.members, fn member ->
             # Don't broadcast to sender if they are already in the room (optional, but consistent)
-            RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", update_payload)
+            RevoluchatWeb.Endpoint.broadcast(
+              "user:#{member.user_id}",
+              "conversation_updated",
+              update_payload
+            )
           end)
 
           # FCM Push for Offline Group Members
           clean_grp_id = clean_id(group_id)
           group_topic = "tenant:#{app_id}:group:#{clean_grp_id}"
           room_topic = "tenant:#{app_id}:room:group_#{clean_grp_id}"
-          
+
           group_presence = Presence.list(group_topic)
           room_presence = Presence.list(room_topic)
-          
+
           is_member_online = fn m_id ->
             m_id_str = to_string(m_id)
             Map.has_key?(group_presence, m_id_str) or Map.has_key?(room_presence, m_id_str)
@@ -1023,7 +1207,10 @@ defmodule RevoluchatWeb.ChatChannel do
         # --- Observability ---
         latency_ms = DateTime.diff(DateTime.utc_now(), message.inserted_at, :millisecond)
         :telemetry.execute([:revoluchat, :messages, :delivered], %{count: 1}, %{app_id: app_id})
-        :telemetry.execute([:revoluchat, :messages, :latency], %{ms: latency_ms}, %{app_id: app_id})
+
+        :telemetry.execute([:revoluchat, :messages, :latency], %{ms: latency_ms}, %{
+          app_id: app_id
+        })
 
         {:reply, {:ok, %{message_id: message.id}}, socket}
 
@@ -1099,10 +1286,10 @@ defmodule RevoluchatWeb.ChatChannel do
     base_url = RevoluchatWeb.Endpoint.url()
     token = socket.assigns.token
     api_key = socket.assigns.api_key
-    
+
     url = "#{base_url}/api/a/v1/attachments/#{att.id}/show?token=#{token}&api_key=#{api_key}"
 
-    type = 
+    type =
       cond do
         String.starts_with?(att.mime_type || "", "image/") -> "image"
         String.starts_with?(att.mime_type || "", "video/") -> "video"
@@ -1190,11 +1377,19 @@ defmodule RevoluchatWeb.ChatChannel do
     end
   end
 
-  defp initiate_and_broadcast_call(app_id, conversation_id, group_id, user_id, receiver_id, call_type, socket) do
+  defp initiate_and_broadcast_call(
+         app_id,
+         conversation_id,
+         group_id,
+         user_id,
+         receiver_id,
+         call_type,
+         socket
+       ) do
     case Calls.initiate_call(app_id, conversation_id, user_id, receiver_id, call_type, group_id) do
       {:ok, call, caller_identity} ->
         # Enrichment from local DB if remote identity is generic
-        caller_identity = 
+        caller_identity =
           case Accounts.get_registered_user(app_id, user_id) do
             nil -> caller_identity
             u -> %{name: u.name || u.phone, photo: u.avatar_url, phone: u.phone}
@@ -1212,18 +1407,21 @@ defmodule RevoluchatWeb.ChatChannel do
         }
 
         # Enrich group info if present
-        payload = if group_id do
-          case Chat.get_group(app_id, group_id) do
-            {:ok, g} -> 
-              Map.merge(payload, %{
-                "group_name" => g.name,
-                "group_photo" => g.avatar_url
-              })
-            _ -> payload
+        payload =
+          if group_id do
+            case Chat.get_group(app_id, group_id) do
+              {:ok, g} ->
+                Map.merge(payload, %{
+                  "group_name" => g.name,
+                  "group_photo" => g.avatar_url
+                })
+
+              _ ->
+                payload
+            end
+          else
+            payload
           end
-        else
-          payload
-        end
 
         # Broadcast within room/group
         broadcast!(socket, "call:incoming", payload)
@@ -1242,10 +1440,16 @@ defmodule RevoluchatWeb.ChatChannel do
               {:ok, group} ->
                 Enum.each(group.members, fn member ->
                   if to_string(member.user_id) != to_string(user_id) do
-                     RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "call:incoming", payload)
+                    RevoluchatWeb.Endpoint.broadcast(
+                      "user:#{member.user_id}",
+                      "call:incoming",
+                      payload
+                    )
                   end
                 end)
-              _ -> :ok
+
+              _ ->
+                :ok
             end
 
           true ->
@@ -1263,8 +1467,11 @@ defmodule RevoluchatWeb.ChatChannel do
   defp handle_offline_call_push(app_id, conversation_id, receiver_id, payload) do
     topic_name = "tenant:#{app_id}:room:#{conversation_id}"
     presence_list = Presence.list(topic_name)
-    is_receiver_online = Map.has_key?(presence_list, receiver_id) || Map.has_key?(presence_list, to_string(receiver_id))
-    
+
+    is_receiver_online =
+      Map.has_key?(presence_list, receiver_id) ||
+        Map.has_key?(presence_list, to_string(receiver_id))
+
     if not is_receiver_online do
       %{"app_id" => app_id, "user_id" => receiver_id, "call" => payload}
       |> Revoluchat.Workers.FcmPushWorker.new()
@@ -1274,6 +1481,7 @@ defmodule RevoluchatWeb.ChatChannel do
 
   defp resolve_group_avatar(nil), do: nil
   defp resolve_group_avatar(""), do: nil
+
   defp resolve_group_avatar(url) do
     if String.match?(url, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) do
       "/api/a/v1/attachments/#{url}/show"

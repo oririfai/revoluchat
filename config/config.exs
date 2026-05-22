@@ -56,7 +56,8 @@ config :phoenix, :json_library, Jason
 config :revoluchat, Oban,
   repo: Revoluchat.Repo,
   plugins: [
-    {Oban.Plugins.Pruner, max_age: 3600}, # Prune completed/failed jobs after 1 hour (high-load optimization)
+    # Prune completed/failed jobs after 1 hour (high-load optimization)
+    {Oban.Plugins.Pruner, max_age: 3600},
     Oban.Plugins.Lifeline
   ],
   queues: [
@@ -77,8 +78,7 @@ config :ex_aws,
   secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY", "minioadmin"),
   region: System.get_env("AWS_REGION", "us-east-1")
 
-config :revoluchat, :storage,
-  presigned_url_expiry: 3600
+config :revoluchat, :storage, presigned_url_expiry: 3600
 
 # ─── Rate Limiting (Hammer) ──────────────────────────────────────────────────
 config :hammer,

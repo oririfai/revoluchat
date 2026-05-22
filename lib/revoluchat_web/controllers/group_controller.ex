@@ -11,6 +11,7 @@ defmodule RevoluchatWeb.GroupController do
   def show(conn, %{"id" => id}) do
     app_id = conn.assigns.current_app_id
     with {:ok, group} <- Chat.get_group(app_id, id) do
+      group = preload_group_last_message(group, app_id)
       json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id)})
     end
   end
@@ -35,9 +36,11 @@ defmodule RevoluchatWeb.GroupController do
     with {:ok, created_group} <- Chat.create_group(app_id, params),
          {:ok, group} <- Chat.get_group(app_id, created_group.id) do
       
+      group_preloaded = preload_group_last_message(group, app_id)
+
       # Notify all members about the new group
       Enum.each(group.members, fn member ->
-        formatted_for_member = format_group(group, app_id, member.user_id)
+        formatted_for_member = format_group(group_preloaded, app_id, member.user_id)
         RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", %{
           conversation_id: "group_#{group.id}",
           type: "group",
@@ -47,7 +50,7 @@ defmodule RevoluchatWeb.GroupController do
 
       conn
       |> put_status(:created)
-      |> json(%{data: format_group(group, app_id, user_id)})
+      |> json(%{data: format_group(group_preloaded, app_id, user_id)})
     end
   end
 
@@ -55,6 +58,7 @@ defmodule RevoluchatWeb.GroupController do
   def update(conn, %{"id" => id} = params) do
     app_id = conn.assigns.current_app_id
     with {:ok, group} <- Chat.update_group(app_id, id, params) do
+      group = preload_group_last_message(group, app_id)
       json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id)})
     end
   end
@@ -104,7 +108,24 @@ defmodule RevoluchatWeb.GroupController do
 
   # ─── Private ─────────────────────────────────────────────────────────────────
 
-  def format_group(group, app_id, current_user_id) do
+  defp preload_group_last_message(nil, _app_id), do: nil
+  defp preload_group_last_message(group, app_id) do
+    case Map.get(group, :last_message) do
+      %{id: id} = lm when not is_nil(id) ->
+        if Map.get(lm, :type) == "attachment" do
+          case Chat.list_messages_by_ids(app_id, [id]) do
+            [full_msg | _] -> %{group | last_message: full_msg}
+            _ -> group
+          end
+        else
+          group
+        end
+      _ ->
+        group
+    end
+  end
+
+  def format_group(group, app_id, current_user_id, attachments_map \\ %{}) do
     # Fetch member details for better FE display
     user_ids = Enum.map(group.members, & &1.user_id)
     users_data = Accounts.list_registered_users_by_ids(app_id, user_ids)
@@ -135,7 +156,7 @@ defmodule RevoluchatWeb.GroupController do
           }
         }
       end),
-      last_message: format_last_message(Map.get(group, :last_message)),
+      last_message: format_last_message(Map.get(group, :last_message), app_id, attachments_map),
       my_status: (Enum.find_value(group.members || [], fn m -> 
         if to_string(m.user_id) == to_string(current_user_id) do
           m.status
@@ -151,12 +172,82 @@ defmodule RevoluchatWeb.GroupController do
 
   defp format_last_message(nil), do: nil
   defp format_last_message(m) do
+    format_last_message(m, Map.get(m, :app_id), %{})
+  end
+
+  defp format_last_message(nil, _app_id), do: nil
+  defp format_last_message(m, app_id) do
+    format_last_message(m, app_id, %{})
+  end
+
+  defp format_last_message(nil, _app_id, _attachments_map), do: nil
+  defp format_last_message(m, app_id, attachments_map) do
+    app_id = app_id || Map.get(m, :app_id)
+    # Get attachment IDs for this message
+    attachment_ids = 
+      (m.attachment_ids || [])
+      |> Enum.concat([m.attachment_id])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    attachments_list =
+      cond do
+        # 1. Plural virtual field (e.g. from gRPC / Advance Tier)
+        is_list(Map.get(m, :attachments)) and Map.get(m, :attachments) != [] ->
+          Map.get(m, :attachments)
+
+        # 2. Singular Ecto association (e.g. from Postgres Tier preloads)
+        not is_nil(Map.get(m, :attachment)) and not match?(%Ecto.Association.NotLoaded{}, Map.get(m, :attachment)) ->
+          [Map.get(m, :attachment)]
+
+        # 3. Use bulk-fetched map
+        Enum.all?(attachment_ids, &Map.has_key?(attachments_map, &1)) ->
+          Enum.map(attachment_ids, &Map.get(attachments_map, &1))
+
+        # 4. Fallback to database query (passing app_id as fallback in case m.app_id is nil)
+        attachment_ids != [] and app_id ->
+          Chat.list_attachments_by_ids(app_id, attachment_ids)
+
+        true ->
+          []
+      end
+
+    formatted_attachments = Enum.map(attachments_list, &format_attachment/1)
+    first_attachment = List.first(formatted_attachments)
+
     %{
       id: m.id,
       body: m.body,
       type: m.type,
       sender_id: m.sender_id,
-      inserted_at: m.inserted_at
+      inserted_at: m.inserted_at,
+      attachment_id: m.attachment_id,
+      attachment: first_attachment,
+      attachments: formatted_attachments
+    }
+  end
+
+  defp format_attachment(nil), do: nil
+  defp format_attachment(att) do
+    base_url = RevoluchatWeb.Endpoint.url()
+    url = "#{base_url}/api/a/v1/attachments/#{att.id}/show"
+
+    type = 
+      cond do
+        String.starts_with?(att.mime_type || "", "image/") -> "image"
+        String.starts_with?(att.mime_type || "", "video/") -> "video"
+        String.starts_with?(att.mime_type || "", "audio/") -> "audio"
+        true -> "file"
+      end
+
+    %{
+      id: att.id,
+      url: url,
+      mime_type: att.mime_type,
+      type: type,
+      filename: Map.get(att.metadata || %{}, "filename") || "file",
+      size: att.size,
+      metadata: att.metadata
     }
   end
 

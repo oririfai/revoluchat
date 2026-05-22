@@ -8,7 +8,7 @@ defmodule Revoluchat.Grpc.ChatClient do
   alias Revoluchat.V1.MessageService.Stub, as: MsgStub
   alias Revoluchat.V1.GroupService.Stub, as: GroupStub
   alias Revoluchat.V1.AttachmentService.Stub, as: AttStub
-  
+
   alias Revoluchat.V1.{
     CreateConversationRequest,
     ListConversationsRequest,
@@ -39,8 +39,11 @@ defmodule Revoluchat.Grpc.ChatClient do
   defp connect do
     target = endpoint()
     Logger.info("[gRPC] Connecting to Chat Service at #{target}")
+
     case GRPC.Stub.connect(target) do
-      {:ok, channel} -> {:ok, channel}
+      {:ok, channel} ->
+        {:ok, channel}
+
       {:error, reason} ->
         Logger.error("[gRPC] Failed to connect to Chat Service: #{inspect(reason)}")
         {:error, reason}
@@ -52,16 +55,17 @@ defmodule Revoluchat.Grpc.ChatClient do
   end
 
   # ─── Conversations ────────────────────────────────────────────────────────────
-  
+
   def get_or_create_conversation(app_id, user_a_id, user_b_id) do
     request = %CreateConversationRequest{
-      app_id: app_id, 
-      user_a_id: ensure_string(user_a_id), 
+      app_id: app_id,
+      user_a_id: ensure_string(user_a_id),
       user_b_id: ensure_string(user_b_id)
     }
-    
+
     with {:ok, channel} <- connect(),
-         {:ok, response} <- ConvStub.create_conversation(channel, request, metadata: metadata(user_a_id, app_id)) do
+         {:ok, response} <-
+           ConvStub.create_conversation(channel, request, metadata: metadata(user_a_id, app_id)) do
       {:ok, response.conversation}
     else
       {:error, reason} ->
@@ -77,7 +81,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- ConvStub.get_conversation(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           ConvStub.get_conversation(channel, request, metadata: metadata(user_id, app_id)) do
       {:ok, response.conversation}
     else
       {:error, reason} ->
@@ -92,19 +97,28 @@ defmodule Revoluchat.Grpc.ChatClient do
 
   def list_user_conversations(app_id, user_id, opts \\ []) do
     request = %ListConversationsRequest{app_id: app_id, user_id: ensure_string(user_id)}
-    Logger.info("[gRPC] list_user_conversations - AppID: #{app_id}, UserID: #{user_id}, Archived: #{opts[:archived]}")
-    
+
+    Logger.info(
+      "[gRPC] list_user_conversations - AppID: #{app_id}, UserID: #{user_id}, Archived: #{opts[:archived]}"
+    )
+
     with {:ok, channel} <- connect() do
-      rpc_func = if opts[:archived], do: &ConvStub.list_archived_conversations/3, else: &ConvStub.list_conversations/3
-      
+      rpc_func =
+        if opts[:archived],
+          do: &ConvStub.list_archived_conversations/3,
+          else: &ConvStub.list_conversations/3
+
       case rpc_func.(channel, request, metadata: metadata(user_id, app_id)) do
-        {:ok, response} -> 
+        {:ok, response} ->
           Logger.info("[gRPC] Received #{length(response.conversations)} conversations")
           response.conversations
+
         {:error, reason} ->
           Logger.error("[gRPC] list_user_conversations failed: #{inspect(reason)}")
           []
-        _ -> []
+
+        _ ->
+          []
       end
     else
       _ -> []
@@ -119,7 +133,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- ConvStub.delete_conversation(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           ConvStub.delete_conversation(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     else
       {:error, reason} ->
@@ -136,7 +151,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- ConvStub.archive_conversation(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           ConvStub.archive_conversation(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     else
       {:error, reason} ->
@@ -153,11 +169,15 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- ConvStub.unarchive_conversation(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           ConvStub.unarchive_conversation(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     else
       {:error, reason} ->
-        Logger.error("[gRPC] ConversationService.unarchive_conversation error: #{inspect(reason)}")
+        Logger.error(
+          "[gRPC] ConversationService.unarchive_conversation error: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end
@@ -180,7 +200,10 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.insert_message(channel, request, metadata: metadata(attrs[:sender_id], attrs[:app_id])) do
+         {:ok, response} <-
+           MsgStub.insert_message(channel, request,
+             metadata: metadata(attrs[:sender_id], attrs[:app_id])
+           ) do
       {:ok, response.message, response.message.attachments || []}
     else
       {:error, reason} ->
@@ -197,7 +220,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.mark_read(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           MsgStub.mark_read(channel, request, metadata: metadata(user_id, app_id)) do
       {:ok, response.message}
     else
       {:error, reason} ->
@@ -214,7 +238,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.mark_delivered(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           MsgStub.mark_delivered(channel, request, metadata: metadata(user_id, app_id)) do
       {:ok, response.message}
     else
       {:error, reason} ->
@@ -234,7 +259,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.list_messages(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           MsgStub.list_messages(channel, request, metadata: metadata(user_id, app_id)) do
       response.messages
     else
       _ -> []
@@ -249,7 +275,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.delete_message(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           MsgStub.delete_message(channel, request, metadata: metadata(user_id, app_id)) do
       {:ok, response.message}
     else
       {:error, reason} ->
@@ -266,7 +293,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.bulk_delete_messages(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           MsgStub.bulk_delete_messages(channel, request, metadata: metadata(user_id, app_id)) do
       {:ok, response.count}
     else
       {:error, reason} ->
@@ -279,6 +307,7 @@ defmodule Revoluchat.Grpc.ChatClient do
 
   def create_group(app_id, params) do
     creator_id = params[:creator_id]
+
     request = %CreateGroupRequest{
       app_id: app_id,
       name: params["name"] || params[:name],
@@ -289,7 +318,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.create_group(channel, request, metadata: metadata(creator_id, app_id)) do
+         {:ok, response} <-
+           GroupStub.create_group(channel, request, metadata: metadata(creator_id, app_id)) do
       {:ok, response.group}
     else
       {:error, reason} ->
@@ -318,7 +348,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.add_members(channel, request, metadata: metadata(nil, app_id)) do
+         {:ok, response} <-
+           GroupStub.add_members(channel, request, metadata: metadata(nil, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
@@ -331,7 +362,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.remove_member(channel, request, metadata: metadata(nil, app_id)) do
+         {:ok, response} <-
+           GroupStub.remove_member(channel, request, metadata: metadata(nil, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
@@ -343,11 +375,14 @@ defmodule Revoluchat.Grpc.ChatClient do
       name: params["name"] || params[:name],
       description: params["description"] || params[:description],
       avatar_url: params["avatar_url"] || params[:avatar_url],
-      is_locked: (if is_nil(params["is_locked"]), do: params[:is_locked], else: params["is_locked"]) || false
+      is_locked:
+        if(is_nil(params["is_locked"]), do: params[:is_locked], else: params["is_locked"]) ||
+          false
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.update_group(channel, request, metadata: metadata(nil, app_id)) do
+         {:ok, response} <-
+           GroupStub.update_group(channel, request, metadata: metadata(nil, app_id)) do
       {:ok, response.group}
     end
   end
@@ -359,7 +394,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.leave_group(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           GroupStub.leave_group(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
@@ -371,7 +407,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.delete_group(channel, request, metadata: metadata(nil, app_id)) do
+         {:ok, response} <-
+           GroupStub.delete_group(channel, request, metadata: metadata(nil, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
@@ -384,7 +421,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.mute_group(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           GroupStub.mute_group(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
@@ -396,11 +434,13 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- GroupStub.accept_group_invitation(channel, request, metadata: metadata(user_id, app_id)) do
+         {:ok, response} <-
+           GroupStub.accept_group_invitation(channel, request,
+             metadata: metadata(user_id, app_id)
+           ) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
-
 
   # --- ATTACHMENTS (ADVANCE TIER) ---
 
@@ -418,7 +458,10 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- AttStub.register_attachment(channel, request, metadata: metadata(attrs.uploader_id, attrs.app_id)) do
+         {:ok, response} <-
+           AttStub.register_attachment(channel, request,
+             metadata: metadata(attrs.uploader_id, attrs.app_id)
+           ) do
       {:ok, response.attachment}
     else
       {:error, reason} ->
@@ -431,7 +474,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     request = %ListAttachmentsByIdsRequest{app_id: app_id, ids: ids}
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- AttStub.list_attachments_by_ids(channel, request, metadata: metadata(nil, app_id)) do
+         {:ok, response} <-
+           AttStub.list_attachments_by_ids(channel, request, metadata: metadata(nil, app_id)) do
       response.attachments
     else
       _ -> []
@@ -446,7 +490,8 @@ defmodule Revoluchat.Grpc.ChatClient do
     }
 
     with {:ok, channel} <- connect(),
-         {:ok, response} <- MsgStub.list_messages(channel, request, metadata: metadata(nil, app_id)) do
+         {:ok, response} <-
+           MsgStub.list_messages(channel, request, metadata: metadata(nil, app_id)) do
       response.messages
     else
       _ -> []
@@ -460,6 +505,7 @@ defmodule Revoluchat.Grpc.ChatClient do
   end
 
   defp clean_id(nil), do: ""
+
   defp clean_id(id) do
     id |> to_string() |> String.replace(~r/^(group_|room_)/, "")
   end
