@@ -17,10 +17,6 @@ defmodule Revoluchat.Accounts.Token do
     default_claims(skip: [:aud, :iss])
   end
 
-  @doc """
-  Verifikasi JWT RS256 menggunakan JWKS dari user service/tenant.
-  Returns {:ok, user_id} dimana user_id adalah string atau integer.
-  """
   def verify_access_token(token_string) do
     # Karena JWKS hook sudah di setup, kita cukup call verify_and_validate
     # JWKS akan otomatis mencari key yang cocok (berdasarkan kid header)
@@ -32,6 +28,25 @@ defmodule Revoluchat.Accounts.Token do
 
       {:ok, _claims} ->
         {:error, :missing_sub_claim}
+
+      {:error, :no_signers_fetched} ->
+        require Logger
+        Logger.warning("verify_access_token: No signers fetched. Attempting synchronous refresh of JWKS keys...")
+        
+        # Synchronously refresh the signers in JwksStrategy
+        Revoluchat.Accounts.JwksStrategy.refresh_signers()
+
+        # Retry verification after refresh
+        case verify_and_validate(token_string) do
+          {:ok, %{"sub" => sub} = claims} ->
+            user_id = parse_user_id(sub)
+            app_id = Map.get(claims, "app_id")
+            {:ok, %{user_id: user_id, app_id: app_id}}
+
+          {:error, reason} ->
+            Logger.error("verify_access_token: Retry failed after refresh. Reason: #{inspect(reason)}")
+            {:error, reason}
+        end
 
       {:error, reason} ->
         {:error, reason}

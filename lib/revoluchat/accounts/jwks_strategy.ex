@@ -96,8 +96,15 @@ defmodule Revoluchat.Accounts.JwksStrategy do
       Logger.info("Refreshing JWKS signers from URL: #{full_url}")
       Logger.info("Active server key for refresh: #{inspect(active_key)}")
 
+      # Dynamically extract supported JWS algorithms from JOSE to avoid Enumerable protocol crash (value: nil)
+      algs =
+        case Enum.find(JOSE.JWA.supports(), &match?({:jws, _}, &1)) do
+          {:jws, {:alg, list}} -> list
+          _ -> ["RS256"]
+        end
+
       # Trigger the check_fetch to fetch and cache signers
-      case JokenJwks.DefaultStrategyTemplate.check_fetch(__MODULE__, full_url, []) do
+      case JokenJwks.DefaultStrategyTemplate.check_fetch(__MODULE__, full_url, [jws_supported_algs: algs]) do
         {:ok, signers} ->
           Logger.info("JWKS signers successfully refreshed. Count: #{length(signers)}")
 

@@ -5,6 +5,8 @@ defmodule Revoluchat.Application do
 
   use Application
 
+  @grpc_port (if function_exported?(Mix, :env, 0) and Mix.env() == :test, do: 50059, else: 50051)
+
   @impl true
   def start(_type, _args) do
     children = [
@@ -21,11 +23,13 @@ defmodule Revoluchat.Application do
       {Oban, Application.fetch_env!(:revoluchat, Oban)},
       # gRPC Server
       {GRPC.Server.Supervisor,
-       endpoint: Revoluchat.Grpc.Endpoint, port: 50051, start_server: true},
+       endpoint: Revoluchat.Grpc.Endpoint, port: @grpc_port, start_server: true},
       # JWKS Strategy (untuk dynamic fetch public keys dari user-be)
       Revoluchat.Accounts.JwksStrategy,
       # gRPC Client Supervisor (untuk call ke user service)
       {GRPC.Client.Supervisor, []},
+      # Google FCM OAuth2 Token Cache
+      {Revoluchat.Notifications.FcmAuth, []},
       # Start to serve requests, typically the last entry
       RevoluchatWeb.Endpoint
     ]

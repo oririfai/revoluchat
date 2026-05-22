@@ -949,7 +949,7 @@ defmodule RevoluchatWeb.ChatChannel do
             id: if(user, do: user.user_id, else: message.sender_id),
             name: (user && user.name) || "Unknown",
             phone: if(user, do: user.phone, else: nil),
-            avatar_url: if(user, do: user.avatar_url, else: nil)
+            avatar_url: if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
           })
 
         # Broadcast ke semua (termasuk sender untuk konfirmasi visual real-time)
@@ -970,19 +970,53 @@ defmodule RevoluchatWeb.ChatChannel do
           is_receiver_online = Map.has_key?(presence_list, receiver_id) || Map.has_key?(presence_list, to_string(receiver_id))
           
           if not is_receiver_online do
-            %{"app_id" => app_id, "user_id" => receiver_id, "message" => formatted_message}
+            %{"app_id" => app_id, "user_id" => receiver_id, "conversation_id" => conversation_id, "message" => formatted_message}
             |> Revoluchat.Workers.FcmPushWorker.new()
             |> Oban.insert()
           end
         else
           # Group Update
           # We need to notify all members so their conversation list updates (unread count, last message)
+          formatted_group_id = if String.starts_with?(group_id, "group_"), do: group_id, else: "group_#{group_id}"
           {:ok, group} = Chat.get_group(app_id, group_id)
-          update_payload = %{conversation_id: group_id, last_message: formatted_message, unread_count_update: 1, type: "group"}
+          update_payload = %{conversation_id: formatted_group_id, last_message: formatted_message, unread_count_update: 1, type: "group"}
           
           Enum.each(group.members, fn member ->
             # Don't broadcast to sender if they are already in the room (optional, but consistent)
             RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", update_payload)
+          end)
+
+          # FCM Push for Offline Group Members
+          clean_grp_id = clean_id(group_id)
+          group_topic = "tenant:#{app_id}:group:#{clean_grp_id}"
+          room_topic = "tenant:#{app_id}:room:group_#{clean_grp_id}"
+          
+          group_presence = Presence.list(group_topic)
+          room_presence = Presence.list(room_topic)
+          
+          is_member_online = fn m_id ->
+            m_id_str = to_string(m_id)
+            Map.has_key?(group_presence, m_id_str) or Map.has_key?(room_presence, m_id_str)
+          end
+
+          resolved_avatar = resolve_group_avatar(group.avatar_url)
+
+          Enum.each(group.members, fn member ->
+            # Don't send push to the sender
+            if to_string(member.user_id) != to_string(message.sender_id) do
+              if not is_member_online.(member.user_id) do
+                %{
+                  "app_id" => app_id,
+                  "user_id" => member.user_id,
+                  "conversation_id" => formatted_group_id,
+                  "message" => formatted_message,
+                  "conversation_name" => group.name,
+                  "sender_avatar_url" => resolved_avatar
+                }
+                |> Revoluchat.Workers.FcmPushWorker.new()
+                |> Oban.insert()
+              end
+            end
           end)
         end
 
@@ -1008,7 +1042,7 @@ defmodule RevoluchatWeb.ChatChannel do
       id: if(user, do: user.id, else: message.sender_id),
       name: if(user, do: user.name, else: "Unknown"),
       phone: if(user, do: user.phone, else: nil),
-      avatar_url: if(user, do: user.avatar_url, else: nil)
+      avatar_url: if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
     })
   end
 
@@ -1045,6 +1079,7 @@ defmodule RevoluchatWeb.ChatChannel do
       is_encrypted: message.is_encrypted,
       sender_id: message.sender_id,
       conversation_id: message.conversation_id,
+      group_id: message.group_id,
       reply_to_id: message.reply_to_id,
       client_id: message.client_id,
       attachment: attachments_list |> List.first() |> format_attachment(socket),
@@ -1234,6 +1269,16 @@ defmodule RevoluchatWeb.ChatChannel do
       %{"app_id" => app_id, "user_id" => receiver_id, "call" => payload}
       |> Revoluchat.Workers.FcmPushWorker.new()
       |> Oban.insert()
+    end
+  end
+
+  defp resolve_group_avatar(nil), do: nil
+  defp resolve_group_avatar(""), do: nil
+  defp resolve_group_avatar(url) do
+    if String.match?(url, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) do
+      "/api/a/v1/attachments/#{url}/show"
+    else
+      url
     end
   end
 end

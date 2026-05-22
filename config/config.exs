@@ -56,7 +56,7 @@ config :phoenix, :json_library, Jason
 config :revoluchat, Oban,
   repo: Revoluchat.Repo,
   plugins: [
-    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+    {Oban.Plugins.Pruner, max_age: 3600}, # Prune completed/failed jobs after 1 hour (high-load optimization)
     Oban.Plugins.Lifeline
   ],
   queues: [
