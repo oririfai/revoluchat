@@ -27,6 +27,8 @@ services:
         condition: service_healthy
       # minio:
       #   condition: service_started
+    networks:
+      - shared-network
 
   db:
     image: postgres:15-alpine
@@ -44,6 +46,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - shared-network
 
  # minio:
   #   image: minio/minio
@@ -60,3 +64,7 @@ services:
 volumes:
   revoluchat_pg_data:
   minio_data:
+
+networks:
+  shared-network:
+    external: true
