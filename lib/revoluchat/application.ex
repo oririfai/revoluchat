@@ -5,10 +5,15 @@ defmodule Revoluchat.Application do
 
   use Application
 
-  @grpc_port (if function_exported?(Mix, :env, 0) and Mix.env() == :test, do: 50059, else: 50051)
-
   @impl true
   def start(_type, _args) do
+    grpc_port =
+      case System.get_env("REVOLUCHAT_GRPC_PORT") do
+        nil -> if function_exported?(Mix, :env, 0) and Mix.env() == :test, do: 50059, else: 50051
+        "" -> if function_exported?(Mix, :env, 0) and Mix.env() == :test, do: 50059, else: 50051
+        val -> String.to_integer(val)
+      end
+
     children = [
       Revoluchat.Repo,
       {DNSCluster, query: Application.get_env(:revoluchat, :dns_cluster_query) || :ignore},
@@ -23,7 +28,7 @@ defmodule Revoluchat.Application do
       {Oban, Application.fetch_env!(:revoluchat, Oban)},
       # gRPC Server
       {GRPC.Server.Supervisor,
-       endpoint: Revoluchat.Grpc.Endpoint, port: @grpc_port, start_server: true},
+       endpoint: Revoluchat.Grpc.Endpoint, port: grpc_port, start_server: true},
       # JWKS Strategy (untuk dynamic fetch public keys dari user-be)
       Revoluchat.Accounts.JwksStrategy,
       # gRPC Client Supervisor (untuk call ke user service)
