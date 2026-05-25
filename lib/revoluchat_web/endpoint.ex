@@ -4,14 +4,7 @@ defmodule RevoluchatWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
-  @session_options [
-    store: :cookie,
-    key: "_site_key",
-    signing_salt: System.get_env("SESSION_SIGNING_SALT"),
-    same_site: "Lax",
-    secure: true,
-    http_only: true
-  ]
+  @session_options {RevoluchatWeb.Endpoint, :session_options, []}
 
   socket("/socket", RevoluchatWeb.UserSocket,
     websocket: [
@@ -64,7 +57,7 @@ defmodule RevoluchatWeb.Endpoint do
 
   plug(Plug.MethodOverride)
   plug(Plug.Head)
-  plug(Plug.Session, @session_options)
+  plug(RevoluchatWeb.Plugs.Session)
 
   # Force HTTPS
   # plug Plug.SSL,
@@ -108,4 +101,28 @@ defmodule RevoluchatWeb.Endpoint do
   end
 
   def check_origin?(_), do: true
+
+  def session_options do
+    signing_salt = System.fetch_env!("SESSION_SIGNING_SALT")
+    [
+      store: :cookie,
+      key: "_site_key",
+      signing_salt: signing_salt,
+      same_site: "Lax",
+      secure: true,
+      http_only: true
+    ]
+  end
+end
+
+defmodule RevoluchatWeb.Plugs.Session do
+  @behaviour Plug
+  
+  def init(opts), do: opts
+  
+  def call(conn, _opts) do
+    session_opts = RevoluchatWeb.Endpoint.session_options()
+    session_plug_opts = Plug.Session.init(session_opts)
+    Plug.Session.call(conn, session_plug_opts)
+  end
 end
