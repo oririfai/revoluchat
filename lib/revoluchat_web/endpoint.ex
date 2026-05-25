@@ -7,12 +7,15 @@ defmodule RevoluchatWeb.Endpoint do
   @session_options [
     store: :cookie,
     key: "_site_key",
-    signing_salt: System.get_env("SESSION_SIGNING_SALT") || "aCjBnSTYppSWjkghteySJgsRYD",
-    same_site: "Lax"
+    signing_salt: System.get_env("SESSION_SIGNING_SALT"),
+    same_site: "Lax",
+    secure: true,
+    http_only: true
   ]
 
   socket("/socket", RevoluchatWeb.UserSocket,
     websocket: [
+      check_origin: {RevoluchatWeb.Endpoint, :check_origin?, []},
       timeout: 45_000,
       compress: true,
       # 1MB max frame size
@@ -22,7 +25,7 @@ defmodule RevoluchatWeb.Endpoint do
   )
 
   socket("/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
+    websocket: [connect_info: [session: @session_options], check_origin: {RevoluchatWeb.Endpoint, :check_origin?, []}],
     longpoll: [connect_info: [session: @session_options]]
   )
 
@@ -70,4 +73,39 @@ defmodule RevoluchatWeb.Endpoint do
   #   expires: 31_536_000
 
   plug(RevoluchatWeb.Router)
+
+  def check_origin?(%Plug.Conn{} = conn) do
+    case Plug.Conn.get_req_header(conn, "origin") do
+      [origin] -> check_origin?(origin)
+      _ -> true
+    end
+  end
+
+  def check_origin?(origin) when is_binary(origin) do
+    case System.get_env("CSP_CONNECT_SRC") do
+      nil ->
+        true
+      csp ->
+        clean_csp = String.replace(csp, ~r/['\"]/, "")
+        allowed = String.split(clean_csp)
+        
+        origin_uri = URI.parse(origin)
+        origin_host = origin_uri.host
+        
+        Enum.any?(allowed, fn item ->
+          cond do
+            item == "'self'" ->
+              false
+            String.starts_with?(item, "*.") ->
+              suffix = String.slice(item, 2..-1//1)
+              origin_host && String.ends_with?(origin_host, suffix)
+            true ->
+              item_host = item |> String.replace(~r|^https?://|, "") |> String.replace(~r|^wss?://|, "")
+              origin_host == item_host
+          end
+        end)
+    end
+  end
+
+  def check_origin?(_), do: true
 end
