@@ -255,7 +255,11 @@ defmodule RevoluchatWeb.GroupController do
   defp resolve_avatar_url(url) do
     # If it's a UUID (36 chars with dashes), treat as attachment ID
     if String.match?(url, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) do
-      "/api/a/v1/attachments/#{url}/show"
+      if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+        "/api/d/attachments/view/#{url}"
+      else
+        "/api/a/v1/attachments/#{url}/show"
+      end
     else
       url
     end
