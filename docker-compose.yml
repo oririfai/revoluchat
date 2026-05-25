@@ -23,14 +23,14 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      db:
+      db-revoluchat:
         condition: service_healthy
       # minio:
       #   condition: service_started
     networks:
       - shared-network
 
-  db:
+  db-revoluchat:
     image: postgres:15-alpine
     restart: unless-stopped
     ports:
