@@ -1,3 +1,15 @@
+defmodule RevoluchatWeb.Plugs.Session do
+  @behaviour Plug
+  
+  def init(opts), do: opts
+  
+  def call(conn, _opts) do
+    session_opts = RevoluchatWeb.Endpoint.session_options()
+    session_plug_opts = Plug.Session.init(session_opts)
+    Plug.Session.call(conn, session_plug_opts)
+  end
+end
+
 defmodule RevoluchatWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :revoluchat
 
@@ -115,14 +127,4 @@ defmodule RevoluchatWeb.Endpoint do
   end
 end
 
-defmodule RevoluchatWeb.Plugs.Session do
-  @behaviour Plug
-  
-  def init(opts), do: opts
-  
-  def call(conn, _opts) do
-    session_opts = RevoluchatWeb.Endpoint.session_options()
-    session_plug_opts = Plug.Session.init(session_opts)
-    Plug.Session.call(conn, session_plug_opts)
-  end
-end
+
