@@ -24,20 +24,26 @@ defmodule RevoluchatWeb.ContactController do
     case Accounts.add_contact_by_phone(app_id, current_user_id, phone) do
       {:ok, contact} ->
         # Fetch target user data to return to SDK
-        user = Accounts.get_registered_user(app_id, contact.contact_id)
-        
-        conn
-        |> put_status(:created)
-        |> json(%{
-          message: "Kontak berhasil ditambahkan",
-          data: %{
-            id: to_string(user.user_id),
-            chat_id: user.chat_id,
-            name: user.name || "User #{user.user_id}",
-            phone: user.phone,
-            avatar_url: user.avatar_url
-          }
-        })
+        case Accounts.get_registered_user(app_id, contact.contact_id) do
+          nil ->
+            conn
+            |> put_status(:bad_request)
+            |> json(%{error: "not_found", message: "Gagal memuat profil kontak yang ditambahkan"})
+
+          user ->
+            conn
+            |> put_status(:created)
+            |> json(%{
+              message: "Kontak berhasil ditambahkan",
+              data: %{
+                id: to_string(user.user_id),
+                chat_id: user.chat_id,
+                name: user.name || "User #{user.user_id}",
+                phone: user.phone,
+                avatar_url: user.avatar_url
+              }
+            })
+        end
 
       {:error, :user_not_found} ->
         conn

@@ -280,16 +280,33 @@ defmodule Revoluchat.Accounts do
   end
 
   @doc """
-  Ambil data user dari DB lokal (cache).
+  Ambil data user dari DB lokal (cache) atau remote gRPC jika advance tier.
   """
   def get_registered_user(app_id, user_id) do
-    case Repo.get_by(UserChat, app_id: app_id, user_id: user_id) do
-      nil -> nil
-      uc ->
-        if is_nil(uc.name) or is_nil(uc.avatar_url) do
-          schedule_profile_sync(app_id, user_id)
-        end
-        uc
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      case UserClient.get_user(user_id) do
+        {:ok, remote_user} ->
+          target_id = remote_user.uuid || remote_user.id
+          
+          %Revoluchat.Accounts.UserChat{
+            user_id: target_id,
+            chat_id: target_id,
+            name: remote_user.name,
+            phone: remote_user.phone,
+            avatar_url: remote_user.avatar_url
+          }
+        _ ->
+          nil
+      end
+    else
+      case Repo.get_by(UserChat, app_id: app_id, user_id: user_id) do
+        nil -> nil
+        uc ->
+          if is_nil(uc.name) or is_nil(uc.avatar_url) do
+            schedule_profile_sync(app_id, user_id)
+          end
+          uc
+      end
     end
   end
 
