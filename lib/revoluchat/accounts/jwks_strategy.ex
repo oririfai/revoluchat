@@ -43,8 +43,8 @@ defmodule Revoluchat.Accounts.JwksStrategy do
       uri = URI.parse(base_url)
       query = URI.decode_query(uri.query || "") |> Map.put("server_key", active_key)
       full_url = URI.to_string(%URI{uri | query: URI.encode_query(query)})
-      Logger.info("Built JWKS URL: #{full_url}")
-      Logger.info("Active server key: #{active_key}")
+      Logger.info("Built JWKS URL successfully")
+      Logger.info("Active server key found")
       full_url
     else
       Logger.warning("No active server key found, using base URL: #{base_url}")
@@ -93,8 +93,8 @@ defmodule Revoluchat.Accounts.JwksStrategy do
           base_url
         end
 
-      Logger.info("Refreshing JWKS signers from URL: #{full_url}")
-      Logger.info("Active server key for refresh: #{inspect(active_key)}")
+      Logger.info("Refreshing JWKS signers")
+      Logger.info("Active server key found for refresh")
 
       # Dynamically extract supported JWS algorithms from JOSE to avoid Enumerable protocol crash (value: nil)
       algs =

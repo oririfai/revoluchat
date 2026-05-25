@@ -56,9 +56,7 @@ defmodule Revoluchat.Workers.FcmPushWorker do
 
       if payload do
         if access_token == "mock_access_token" do
-          Logger.info(
-            "FcmPushWorker: [MOCK MODE] Simulating FCM Push to token #{push_token.token} (Platform: #{push_token.platform})"
-          )
+          Logger.info("FcmPushWorker: [MOCK MODE] Simulating FCM Push")
           Logger.debug("Payload: #{inspect(payload)}")
         else
           fcm_url = "https://fcm.googleapis.com/v1/projects/#{project_id}/messages:send"
@@ -66,7 +64,7 @@ defmodule Revoluchat.Workers.FcmPushWorker do
           # Kirim request menggunakan Finch pool (HTTP/2 multiplexing)
           case Req.post(fcm_url, json: payload, auth: {:bearer, access_token}) do
             {:ok, %{status: 200}} ->
-              Logger.info("FcmPushWorker: Push successfully sent to token #{push_token.token}")
+              Logger.info("FcmPushWorker: Push successfully sent")
 
             {:ok, %{status: status}} when status in [404, 410] ->
               Logger.warning("FcmPushWorker: Unregistered FCM token detected (status: #{status}). Deleting token from database.")

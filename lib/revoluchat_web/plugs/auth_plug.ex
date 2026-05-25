@@ -41,8 +41,8 @@ defmodule RevoluchatWeb.Plugs.AuthPlug do
 
       case Accounts.get_api_key_by_key(k) do
         nil ->
-          Logger.error("AuthPlug: API Key not found in database: #{inspect(k)}")
-          unauthorized(conn, "API Key tidak valid")
+          Logger.warning("AuthPlug: API Key not found in database")
+          unauthorized(conn, "invalid API key")
 
         api_key_record ->
           Logger.debug("AuthPlug: API Key record found. Verifying JWT Token...")
@@ -52,9 +52,7 @@ defmodule RevoluchatWeb.Plugs.AuthPlug do
               Logger.debug("AuthPlug: JWT Token verified for user_id: #{user_id}")
 
               if token_app_id && token_app_id != api_key_record.app_id do
-                Logger.error(
-                  "AuthPlug: App ID mismatch between API Key (#{api_key_record.app_id}) and Token (#{token_app_id})"
-                )
+                Logger.warning("AuthPlug: App ID mismatch between API Key and Token")
 
                 unauthorized(conn, "App ID mismatch")
               else

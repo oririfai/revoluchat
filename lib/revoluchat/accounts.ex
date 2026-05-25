@@ -147,9 +147,9 @@ defmodule Revoluchat.Accounts do
         query = URI.decode_query(uri.query || "") |> Map.put("server_key", server_key.key)
         full_url = URI.to_string(%URI{uri | query: URI.encode_query(query)})
 
-        Logger.debug("Memulai verifikasi manual JWKS dengan server_key ID: #{server_key.id}")
-        Logger.debug("Full JWKS URL: #{full_url}")
-        Logger.debug("Mengirim permintaan ke JWKS dengan server_key: #{inspect(server_key.key)}")
+        Logger.debug("Memulai verifikasi manual JWKS")
+        Logger.debug("Mengirim request ke JWKS URL")
+        Logger.debug("Mengirim permintaan ke JWKS")
 
         case JokenJwks.HttpFetcher.fetch_signers(full_url, http_max_retries_per_fetch: 0, http_adapter: {Tesla.Adapter.Hackney, [recv_timeout: 10000, connect_timeout: 10000]}) do
           {:ok, signers} ->
@@ -197,7 +197,7 @@ defmodule Revoluchat.Accounts do
         {:ok, claims}
 
       {:error, reason} ->
-        Logger.error("Validasi token gagal: #{inspect(reason)}")
+        Logger.warning("Validasi token gagal")
         {:error, reason}
     end
   end

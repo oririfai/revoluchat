@@ -48,11 +48,11 @@ defmodule RevoluchatWeb.UserSocket do
       end
     else
       {:api_key, nil} ->
-        Logger.error("WebSocket rejected: Invalid or inactive API Key: #{api_key}")
+        Logger.warning("WebSocket rejected: Invalid or inactive API Key")
         :error
 
       {:token, {:error, reason}} ->
-        Logger.error("WebSocket rejected: Token verification failed. Reason: #{inspect(reason)}")
+        Logger.warning("WebSocket rejected: Token verification failed")
         :error
 
       {:app_check, false} ->
