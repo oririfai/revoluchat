@@ -182,6 +182,37 @@ defmodule RevoluchatWeb.ChatChannel do
             status: get_status(message)
           })
 
+          # Broadcast conversation_updated to participant user channels so their main chat lists refresh
+          conversation_id = socket.assigns[:conversation_id]
+          group_id = socket.assigns[:group_id]
+
+          if conversation_id do
+            case Chat.get_conversation_for_user(app_id, clean_id(conversation_id), user_id) do
+              {:ok, conversation} ->
+                update_payload = %{
+                  conversation_id: conversation_id,
+                  type: "direct"
+                }
+                RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_a_id}", "conversation_updated", update_payload)
+                RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_b_id}", "conversation_updated", update_payload)
+              _ -> nil
+            end
+          else
+            if group_id do
+              case Chat.get_group(app_id, clean_id(group_id)) do
+                {:ok, group} ->
+                  update_payload = %{
+                    conversation_id: group_id,
+                    type: "group"
+                  }
+                  Enum.each(group.members, fn member ->
+                    RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", update_payload)
+                  end)
+                _ -> nil
+              end
+            end
+          end
+
           {:reply, :ok, socket}
 
         {:error, _} ->
