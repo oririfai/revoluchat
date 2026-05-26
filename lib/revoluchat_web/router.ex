@@ -1,3 +1,9 @@
+defmodule RevoluchatWeb.CORSConfig do
+  def allowed_origins do
+    Application.get_env(:cors_plug, :origin, "*")
+  end
+end
+
 defmodule RevoluchatWeb.Router do
   use RevoluchatWeb, :router
 
@@ -7,9 +13,9 @@ defmodule RevoluchatWeb.Router do
     plug(RevoluchatWeb.Plugs.SecurityHeaders)
     plug(:accepts, ["json"])
 
-    plug(CORSPlug)
+    plug(CORSPlug, origin: &RevoluchatWeb.CORSConfig.allowed_origins/0)
 
-    # (CORS details configured in config/runtime.exs or config.exs natively)
+    # (CORS details configured dynamically at runtime)
   end
 
   pipeline :authenticated do
@@ -145,3 +151,4 @@ defmodule RevoluchatWeb.Router do
     end
   end
 end
+
