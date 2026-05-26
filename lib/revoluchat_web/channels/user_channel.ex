@@ -581,7 +581,7 @@ defmodule RevoluchatWeb.UserChannel do
       {:ok, message, attachments} ->
         # Broadcast the new bubble to the chat room topic
         target_topic =
-          if call.group_id,
+          if call.group_id && call.group_id != "",
             do: "tenant:#{call.app_id}:group:#{call.group_id}",
             else: "tenant:#{call.app_id}:room:#{call.conversation_id}"
 
@@ -590,6 +590,43 @@ defmodule RevoluchatWeb.UserChannel do
           "new_message",
           format_message(message, attachments)
         )
+
+        # Broadcast conversation_updated to participants
+        is_group = call.group_id && call.group_id != ""
+
+        if is_group do
+          case Chat.get_group(call.app_id, call.group_id) do
+            {:ok, group} ->
+              update_payload = %{
+                conversation_id: call.group_id,
+                type: "group"
+              }
+              Enum.each(group.members, fn member ->
+                RevoluchatWeb.Endpoint.broadcast(
+                  "user:#{member.user_id}",
+                  "conversation_updated",
+                  update_payload
+                )
+              end)
+
+            _ ->
+              :ok
+          end
+        else
+          update_payload = %{
+            conversation_id: call.conversation_id,
+            type: "direct"
+          }
+          RevoluchatWeb.Endpoint.broadcast("user:#{call.caller_id}", "conversation_updated", update_payload)
+
+          if call.receiver_id && call.receiver_id != 0,
+            do:
+              RevoluchatWeb.Endpoint.broadcast(
+                "user:#{call.receiver_id}",
+                "conversation_updated",
+                update_payload
+              )
+        end
 
       _ ->
         Logger.error("UserChannel: Failed to insert call summary message for Call #{call.id}")
@@ -789,6 +826,41 @@ defmodule RevoluchatWeb.UserChannel do
                 "user:#{call.receiver_id}",
                 "new_message",
                 msg_payload
+              )
+        end
+
+        # 3. Broadcast conversation_updated to participants
+        if is_group do
+          case Chat.get_group(app_id, call.group_id) do
+            {:ok, group} ->
+              update_payload = %{
+                conversation_id: call.group_id,
+                type: "group"
+              }
+              Enum.each(group.members, fn member ->
+                RevoluchatWeb.Endpoint.broadcast(
+                  "user:#{member.user_id}",
+                  "conversation_updated",
+                  update_payload
+                )
+              end)
+
+            _ ->
+              :ok
+          end
+        else
+          update_payload = %{
+            conversation_id: call.conversation_id,
+            type: "direct"
+          }
+          RevoluchatWeb.Endpoint.broadcast("user:#{call.caller_id}", "conversation_updated", update_payload)
+
+          if call.receiver_id && call.receiver_id != 0,
+            do:
+              RevoluchatWeb.Endpoint.broadcast(
+                "user:#{call.receiver_id}",
+                "conversation_updated",
+                update_payload
               )
         end
 

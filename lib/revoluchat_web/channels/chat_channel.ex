@@ -1377,10 +1377,48 @@ defmodule RevoluchatWeb.ChatChannel do
 
   defp insert_call_summary(call, socket) do
     payload = Calls.generate_summary_payload(call)
+    app_id = socket.assigns.app_id
 
     case Chat.insert_message(payload) do
       {:ok, message, attachments} ->
         broadcast!(socket, "new_message", format_message(message, attachments, socket))
+
+        # Broadcast conversation_updated to participants
+        is_group = call.group_id && call.group_id != ""
+
+        if is_group do
+          case Chat.get_group(app_id, call.group_id) do
+            {:ok, group} ->
+              update_payload = %{
+                conversation_id: call.group_id,
+                type: "group"
+              }
+              Enum.each(group.members, fn member ->
+                RevoluchatWeb.Endpoint.broadcast(
+                  "user:#{member.user_id}",
+                  "conversation_updated",
+                  update_payload
+                )
+              end)
+
+            _ ->
+              :ok
+          end
+        else
+          update_payload = %{
+            conversation_id: call.conversation_id,
+            type: "direct"
+          }
+          RevoluchatWeb.Endpoint.broadcast("user:#{call.caller_id}", "conversation_updated", update_payload)
+
+          if call.receiver_id && call.receiver_id != 0,
+            do:
+              RevoluchatWeb.Endpoint.broadcast(
+                "user:#{call.receiver_id}",
+                "conversation_updated",
+                update_payload
+              )
+        end
 
       _ ->
         Logger.error("Failed to insert call summary message for Call #{call.id}")
