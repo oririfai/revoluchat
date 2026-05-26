@@ -5,7 +5,16 @@ defmodule Revoluchat.Accounts do
   dan cek user exist via gRPC call ke User Service.
   """
 
-  alias Revoluchat.Accounts.{Token, ApiKey, ServerKey, UserChat, Contact, Admin, AdminLoginActivity}
+  alias Revoluchat.Accounts.{
+    Token,
+    ApiKey,
+    ServerKey,
+    UserChat,
+    Contact,
+    Admin,
+    AdminLoginActivity
+  }
+
   alias Revoluchat.Grpc.UserClient
   alias Revoluchat.Repo
   import Ecto.Query
@@ -73,7 +82,9 @@ defmodule Revoluchat.Accounts do
 
   def revoke_server_key(id) do
     case Repo.get(ServerKey, id) do
-      nil -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+
       server_key ->
         server_key
         |> ServerKey.changeset(%{status: "revoked"})
@@ -83,7 +94,9 @@ defmodule Revoluchat.Accounts do
 
   def delete_server_key(id) do
     case Repo.get(ServerKey, id) do
-      nil -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+
       server_key ->
         result = Repo.delete(server_key)
         result
@@ -97,15 +110,26 @@ defmodule Revoluchat.Accounts do
 
   def check_active_server_key_connection do
     case get_active_server_key() do
-      nil -> {:error, :no_active_key}
+      nil ->
+        {:error, :no_active_key}
+
       server_key ->
-        base_url = Application.get_env(:revoluchat, :jwks_url) || System.get_env("JWKS_URL") || "http://localhost:8181/api/v1/jwks"
+        base_url =
+          Application.get_env(:revoluchat, :jwks_url) || System.get_env("JWKS_URL") ||
+            "http://localhost:8181/api/v1/jwks"
+
         uri = URI.parse(base_url)
         query = URI.decode_query(uri.query || "") |> Map.put("server_key", server_key.key)
         full_url = URI.to_string(%URI{uri | query: URI.encode_query(query)})
 
         url_charlist = String.to_charlist(full_url)
-        case :httpc.request(:get, {url_charlist, []}, [{:timeout, 500}, {:connect_timeout, 500}], []) do
+
+        case :httpc.request(
+               :get,
+               {url_charlist, []},
+               [{:timeout, 500}, {:connect_timeout, 500}],
+               []
+             ) do
           {:ok, {{_, 200, _}, _, _}} -> {:ok, :connected}
           _ -> {:error, :disconnected}
         end
@@ -120,7 +144,9 @@ defmodule Revoluchat.Accounts do
 
       # Set target to active
       case Repo.get(ServerKey, id) do
-        nil -> Repo.rollback(:not_found)
+        nil ->
+          Repo.rollback(:not_found)
+
         key ->
           key
           |> ServerKey.changeset(%{status: "active"})
@@ -130,7 +156,9 @@ defmodule Revoluchat.Accounts do
     |> case do
       {:ok, result} ->
         {:ok, result}
-      {:error, reason} -> {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -140,7 +168,9 @@ defmodule Revoluchat.Accounts do
   """
   def connect_server_key(id) do
     case Repo.get(ServerKey, id) do
-      nil -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+
       server_key ->
         base_url = Application.get_env(:revoluchat, :jwks_url) || System.get_env("JWKS_URL")
         uri = URI.parse(base_url)
@@ -151,11 +181,16 @@ defmodule Revoluchat.Accounts do
         Logger.debug("Mengirim request ke JWKS URL")
         Logger.debug("Mengirim permintaan ke JWKS")
 
-        case JokenJwks.HttpFetcher.fetch_signers(full_url, http_max_retries_per_fetch: 0, http_adapter: {Tesla.Adapter.Hackney, [recv_timeout: 10000, connect_timeout: 10000]}) do
+        case JokenJwks.HttpFetcher.fetch_signers(full_url,
+               http_max_retries_per_fetch: 0,
+               http_adapter:
+                 {Tesla.Adapter.Hackney, [recv_timeout: 10000, connect_timeout: 10000]}
+             ) do
           {:ok, signers} ->
             Logger.debug("Verifikasi manual berhasil! Jumlah signer: #{length(signers)}")
-            
-            if (is_list(signers) and length(signers) > 0) or (is_map(signers) and map_size(signers) > 0) do
+
+            if (is_list(signers) and length(signers) > 0) or
+                 (is_map(signers) and map_size(signers) > 0) do
               set_active_server_key(id)
               Revoluchat.Accounts.JwksStrategy.update_signers(signers)
               {:ok, signers}
@@ -215,24 +250,32 @@ defmodule Revoluchat.Accounts do
           cond do
             user.status == "active" ->
               {:ok, user}
+
             String.starts_with?(user.status, "suspended:") ->
               "suspended:" <> suspended_until = user.status
+
               case DateTime.from_iso8601(suspended_until) do
                 {:ok, suspended_until_dt, _offset} ->
                   if DateTime.compare(suspended_until_dt, DateTime.utc_now()) in [:lt, :eq] do
-                    Logger.info("Advance suspension expired for user #{user_id}! Auto-reactivating...")
+                    Logger.info(
+                      "Advance suspension expired for user #{user_id}! Auto-reactivating..."
+                    )
+
                     case Revoluchat.Grpc.AdminClient.unsuspend_user(user_id) do
                       {:ok, _} ->
                         {:ok, Map.put(user, :status, "active")}
+
                       _ ->
                         {:error, {:suspended, suspended_until}}
                     end
                   else
                     {:error, {:suspended, suspended_until}}
                   end
+
                 _ ->
                   {:error, {:suspended, suspended_until}}
               end
+
             true ->
               {:error, {:suspended, nil}}
           end
@@ -249,22 +292,31 @@ defmodule Revoluchat.Accounts do
         nil ->
           # If not found locally, we let them connect
           {:ok, %{name: "User", phone: "", avatar_url: ""}}
+
         uc ->
           cond do
             uc.is_active ->
-              if not is_nil(uc.suspended_until) and DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :gt do
+              if not is_nil(uc.suspended_until) and
+                   DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :gt do
                 {:error, {:suspended, DateTime.to_iso8601(uc.suspended_until)}}
               else
                 {:ok, uc}
               end
+
             true ->
               # Not active (is_active is false). Check if suspended_until has passed.
-              if not is_nil(uc.suspended_until) and DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :lt do
+              if not is_nil(uc.suspended_until) and
+                   DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :lt do
                 # Suspension expired! Auto-reactivate.
-                uc |> UserChat.changeset(%{is_active: true, suspended_until: nil}) |> Repo.update()
+                uc
+                |> UserChat.changeset(%{is_active: true, suspended_until: nil})
+                |> Repo.update()
+
                 {:ok, uc}
               else
-                suspended_until_str = if uc.suspended_until, do: DateTime.to_iso8601(uc.suspended_until), else: nil
+                suspended_until_str =
+                  if uc.suspended_until, do: DateTime.to_iso8601(uc.suspended_until), else: nil
+
                 {:error, {:suspended, suspended_until_str}}
               end
           end
@@ -287,7 +339,7 @@ defmodule Revoluchat.Accounts do
       case UserClient.get_user(user_id) do
         {:ok, remote_user} ->
           target_id = remote_user.uuid || remote_user.id
-          
+
           %Revoluchat.Accounts.UserChat{
             user_id: target_id,
             chat_id: target_id,
@@ -295,16 +347,20 @@ defmodule Revoluchat.Accounts do
             phone: remote_user.phone,
             avatar_url: remote_user.avatar_url
           }
+
         _ ->
           nil
       end
     else
       case Repo.get_by(UserChat, app_id: app_id, user_id: user_id) do
-        nil -> nil
+        nil ->
+          nil
+
         uc ->
           if is_nil(uc.name) or is_nil(uc.avatar_url) do
             schedule_profile_sync(app_id, user_id)
           end
+
           uc
       end
     end
@@ -315,7 +371,8 @@ defmodule Revoluchat.Accounts do
     |> Revoluchat.Workers.UserProfileSyncWorker.new()
     |> Oban.insert()
   rescue
-    _ -> :ok # Avoid crashing if Oban is not ready
+    # Avoid crashing if Oban is not ready
+    _ -> :ok
   end
 
   @doc """
@@ -328,10 +385,11 @@ defmodule Revoluchat.Accounts do
     if tier == "advance" do
       # Advance Tier: Fetch from Go Backend using get_users/1
       users = UserClient.get_users(valid_ids)
-      
+
       Enum.map(users, fn u ->
         # Use uuid as primary ID to match conversation participants (UUID strings)
         target_id = u.uuid || u.id
+
         %{
           id: target_id,
           chat_id: target_id,
@@ -355,22 +413,42 @@ defmodule Revoluchat.Accounts do
       end)
     end
   end
+
   # ─── User Chat Registration ──────────────────────────────────────────────────
 
   @doc """
-  Memastikan user terdaftar di tabel user_chats. 
+  Memastikan user terdaftar di tabel user_chats.
   Jika belum ada, buat record baru dengan chat_id (UUID).
   """
   def sync_user_profile_to_advance_tier(app_id, user_id) do
     if Application.get_env(:revoluchat, :tier_type) == "advance" do
-       %{app_id: app_id, user_id: user_id}
-       |> Revoluchat.Workers.UserProfileSyncWorker.new()
-       |> Revoluchat.Repo.insert()
+      %{app_id: app_id, user_id: user_id}
+      |> Revoluchat.Workers.UserProfileSyncWorker.new()
+      |> Revoluchat.Repo.insert()
+    end
+  end
+
+  @doc """
+  Sync user profile to advance tier synchronously to ensure they exist in Go BE
+  before running related gRPC calls (like group creation or adding members).
+  """
+  def sync_user_profile_to_advance_tier_sync(app_id, user_id) do
+    if Application.get_env(:revoluchat, :tier_type) == "advance" do
+      case get_user(user_id) do
+        {:ok, user} ->
+          ensure_user_chat_registered(user_id, app_id, user)
+          :ok
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      :ok
     end
   end
 
   def ensure_user_chat_registered(user_id, app_id, profile_attrs \\ %{}) do
-    attrs = 
+    attrs =
       profile_attrs
       |> Map.take([:name, :phone, :avatar_url, "name", "phone", "avatar_url"])
       |> Map.merge(%{user_id: user_id, app_id: app_id})
@@ -378,6 +456,7 @@ defmodule Revoluchat.Accounts do
     case Repo.get_by(UserChat, user_id: user_id, app_id: app_id) do
       nil ->
         attrs = Map.put_new(attrs, :chat_id, Ecto.UUID.generate())
+
         %UserChat{}
         |> UserChat.changeset(attrs)
         |> Repo.insert()
@@ -401,18 +480,22 @@ defmodule Revoluchat.Accounts do
 
   defp add_contact_advance(app_id, owner_id, phone) do
     phone = normalize_phone(phone)
+
     case UserClient.search_user_by_phone(app_id, phone) do
       {:ok, user} ->
         case UserClient.add_contact(app_id, owner_id, user.id) do
           {:ok, _} -> {:ok, %{contact_id: user.id}}
           {:error, reason} -> {:error, reason}
         end
-      {:error, _} -> {:error, :user_not_found}
+
+      {:error, _} ->
+        {:error, :user_not_found}
     end
   end
 
   defp add_contact_normal(app_id, owner_id, phone) do
     phone = normalize_phone(phone)
+
     case Repo.get_by(UserChat, app_id: app_id, phone: phone) do
       nil ->
         # Jika tidak ada di lokal, coba cari di User Service (Go) - ini legacy logic
@@ -422,9 +505,11 @@ defmodule Revoluchat.Accounts do
             case ensure_user_chat_registered(remote_user.id, app_id, remote_user) do
               {:ok, target_user} ->
                 perform_add_contact(app_id, owner_id, target_user.user_id)
+
               {:error, _} ->
                 {:error, :user_not_found}
             end
+
           {:error, _} ->
             {:error, :user_not_found}
         end
@@ -449,6 +534,7 @@ defmodule Revoluchat.Accounts do
             status: "added"
           })
           |> Repo.insert()
+
         contact ->
           {:ok, contact}
       end
@@ -458,25 +544,30 @@ defmodule Revoluchat.Accounts do
   defp search_user_by_phone_remote(phone) do
     phone = normalize_phone(phone)
     # Ambil base URL dari JWKS_URL
-    jwks_url = Application.get_env(:revoluchat, :jwks_url) || System.get_env("JWKS_URL") || "http://localhost:8181/api/v1/jwks"
+    jwks_url =
+      Application.get_env(:revoluchat, :jwks_url) || System.get_env("JWKS_URL") ||
+        "http://localhost:8181/api/v1/jwks"
+
     base_url = jwks_url |> String.replace("/jwks", "") |> String.replace("/api/v1", "")
     url = "#{base_url}/api/v1/user/search"
-    
+
     # Ambil server key aktif untuk autentikasi sistem-ke-sistem
-    headers = 
+    headers =
       case get_active_server_key() do
         nil -> []
         sk -> [{"x-server-key", sk.key}]
       end
-    
+
     case Req.get(url, params: [phone: phone], headers: headers) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, %{
-          id: body["id"],
-          name: body["full_name"],
-          phone: body["phone_number"],
-          avatar_url: body["profile_photo"]
-        }}
+        {:ok,
+         %{
+           id: body["id"],
+           name: body["full_name"],
+           phone: body["phone_number"],
+           avatar_url: body["profile_photo"]
+         }}
+
       _ ->
         {:error, :not_found}
     end
@@ -500,13 +591,16 @@ defmodule Revoluchat.Accounts do
           Enum.map(contacts, fn u ->
             %{
               id: u.id,
-              chat_id: u.id, # In Advance, UUID is chat_id
+              # In Advance, UUID is chat_id
+              chat_id: u.id,
               name: u.full_name || "User #{u.id}",
               phone: u.phone_number,
               avatar_url: u.profile_photo
             }
           end)
-        _ -> []
+
+        _ ->
+          []
       end
     else
       query =
@@ -534,8 +628,8 @@ defmodule Revoluchat.Accounts do
   Returns a list of User objects for those that are registered.
   """
   def sync_contacts(app_id, phones) when is_list(phones) do
-    normalized_phones = 
-      phones 
+    normalized_phones =
+      phones
       |> Enum.map(&normalize_phone/1)
       |> Enum.filter(&(&1 != "" and &1 != nil))
       |> Enum.uniq()
@@ -544,21 +638,24 @@ defmodule Revoluchat.Accounts do
       # In Advance, we search Go backend.
       # Use async_stream to check multiple numbers concurrently
       normalized_phones
-      |> Task.async_stream(fn phone ->
-        case UserClient.search_user_by_phone(app_id, phone) do
-          {:ok, user} ->
-            %{
-              id: user.id,
-              chat_id: user.id,
-              name: user.full_name || "User #{user.id}",
-              phone: user.phone_number,
-              avatar_url: user.profile_photo
-            }
-          _ -> nil
-        end
-      end, max_concurrency: 15, timeout: 10_000, on_timeout: :exit)
-      |> Enum.map(fn 
-        {:ok, result} -> result 
+      |> Task.async_stream(
+        fn phone ->
+          case UserClient.search_user_by_phone(app_id, phone) do
+            {:ok, user} ->
+              %{
+                id: user.id,
+                chat_id: user.id,
+                name: user.full_name || "User #{user.id}",
+                phone: user.phone_number,
+                avatar_url: user.profile_photo
+              }
+
+            _ ->
+              nil
+          end
+        end, max_concurrency: 15, timeout: 10_000, on_timeout: :exit)
+      |> Enum.map(fn
+        {:ok, result} -> result
         _ -> nil
       end)
       |> Enum.filter(& &1)
@@ -602,20 +699,23 @@ defmodule Revoluchat.Accounts do
       Revoluchat.Grpc.AdminClient.list_users(query, page, limit, status_filter)
     else
       offset = (page - 1) * limit
-      
+
       base_query = from(uc in UserChat)
 
-      base_query = 
+      base_query =
         if app_id do
           from(uc in base_query, where: uc.app_id == ^app_id)
         else
           base_query
         end
 
-      base_query = 
+      base_query =
         if query != "" do
           search_term = "%#{query}%"
-          from(uc in base_query, where: ilike(uc.name, ^search_term) or ilike(uc.phone, ^search_term))
+
+          from(uc in base_query,
+            where: ilike(uc.name, ^search_term) or ilike(uc.phone, ^search_term)
+          )
         else
           base_query
         end
@@ -630,9 +730,9 @@ defmodule Revoluchat.Accounts do
       total_count = Repo.aggregate(base_query, :count, :id)
       total_pages = ceil(total_count / limit)
 
-      users = 
+      users =
         base_query
-        |> order_by([desc: :inserted_at])
+        |> order_by(desc: :inserted_at)
         |> offset(^offset)
         |> limit(^limit)
         |> Repo.all()
@@ -643,21 +743,25 @@ defmodule Revoluchat.Accounts do
             name: uc.name || "User #{uc.user_id}",
             phone: uc.phone || "-",
             status:
-              if uc.is_active and (is_nil(uc.suspended_until) or DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :lt) do
+              if uc.is_active and
+                   (is_nil(uc.suspended_until) or
+                      DateTime.compare(uc.suspended_until, DateTime.utc_now()) == :lt) do
                 "active"
               else
                 "suspended"
               end,
             inserted_at: DateTime.to_iso8601(DateTime.from_naive!(uc.inserted_at, "Etc/UTC")),
-            is_kyc: true # Default for now
+            # Default for now
+            is_kyc: true
           }
         end)
 
-      {:ok, %{
-        users: users,
-        total_count: total_count,
-        total_pages: total_pages
-      }}
+      {:ok,
+       %{
+         users: users,
+         total_count: total_count,
+         total_pages: total_pages
+       }}
     end
   end
 
@@ -668,21 +772,26 @@ defmodule Revoluchat.Accounts do
           # Kick online user WebSocket immediately!
           RevoluchatWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
           {:ok, response}
+
         {:error, reason} ->
           {:error, reason}
       end
     else
       query = from(uc in UserChat, where: uc.user_id == ^to_string(user_id))
       query = if app_id, do: from(uc in query, where: uc.app_id == ^app_id), else: query
-      
+
       case Repo.all(query) do
-        [] -> {:error, "User not found"}
+        [] ->
+          {:error, "User not found"}
+
         users ->
           suspended_until = parse_duration(duration)
-          
+
           Repo.transaction(fn ->
             Enum.each(users, fn u ->
-              case u |> UserChat.changeset(%{is_active: false, suspended_until: suspended_until}) |> Repo.update() do
+              case u
+                   |> UserChat.changeset(%{is_active: false, suspended_until: suspended_until})
+                   |> Repo.update() do
                 {:ok, _} -> :ok
                 {:error, changeset} -> Repo.rollback(changeset)
               end
@@ -693,6 +802,7 @@ defmodule Revoluchat.Accounts do
               # Kick online user WebSocket immediately!
               RevoluchatWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
               {:ok, %{success: true, message: "User suspended successfully"}}
+
             {:error, changeset} ->
               {:error, changeset}
           end
@@ -706,13 +816,17 @@ defmodule Revoluchat.Accounts do
     else
       query = from(uc in UserChat, where: uc.user_id == ^to_string(user_id))
       query = if app_id, do: from(uc in query, where: uc.app_id == ^app_id), else: query
-      
+
       case Repo.all(query) do
-        [] -> {:error, "User not found"}
+        [] ->
+          {:error, "User not found"}
+
         users ->
           Repo.transaction(fn ->
             Enum.each(users, fn u ->
-              case u |> UserChat.changeset(%{is_active: true, suspended_until: nil}) |> Repo.update() do
+              case u
+                   |> UserChat.changeset(%{is_active: true, suspended_until: nil})
+                   |> Repo.update() do
                 {:ok, _} -> :ok
                 {:error, changeset} -> Repo.rollback(changeset)
               end
@@ -721,6 +835,7 @@ defmodule Revoluchat.Accounts do
           |> case do
             {:ok, _} ->
               {:ok, %{success: true, message: "User unsuspended successfully"}}
+
             {:error, changeset} ->
               {:error, changeset}
           end
@@ -732,11 +847,13 @@ defmodule Revoluchat.Accounts do
     cond do
       duration == "permanent" or duration == "" or is_nil(duration) ->
         nil
+
       true ->
         case Regex.run(~r/^(\d+)([a-zA-Z]+)$/, to_string(duration)) do
           [_, val_str, unit] ->
             val = String.to_integer(val_str)
             now = DateTime.utc_now()
+
             case String.downcase(unit) do
               "h" -> DateTime.add(now, val * 3600, :second)
               "d" -> DateTime.add(now, val * 86400, :second)
@@ -745,6 +862,7 @@ defmodule Revoluchat.Accounts do
               "y" -> DateTime.add(now, val * 365 * 86400, :second)
               _ -> nil
             end
+
           _ ->
             nil
         end
@@ -753,7 +871,7 @@ defmodule Revoluchat.Accounts do
 
   def log_admin_login(admin_or_email, ip_address, user_agent, status) do
     {os, browser} = parse_user_agent(user_agent)
-    
+
     attrs = %{
       ip_address: ip_address,
       user_agent: user_agent,
@@ -761,13 +879,15 @@ defmodule Revoluchat.Accounts do
       device_browser: browser,
       status: to_string(status)
     }
-    
-    attrs = 
+
+    attrs =
       case admin_or_email do
         %Admin{} = admin ->
           Map.merge(attrs, %{admin_id: admin.id, email: admin.email})
+
         email when is_binary(email) ->
           Map.put(attrs, :email, email)
+
         _ ->
           attrs
       end
@@ -779,6 +899,7 @@ defmodule Revoluchat.Accounts do
 
   def parse_user_agent(ua) do
     ua_str = to_string(ua)
+
     os =
       cond do
         String.contains?(ua_str, "Windows") -> "Windows"

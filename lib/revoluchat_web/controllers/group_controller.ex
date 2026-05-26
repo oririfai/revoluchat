@@ -21,10 +21,10 @@ defmodule RevoluchatWeb.GroupController do
     app_id = conn.assigns.current_app_id
     user_id = conn.assigns.current_user_id
     
-    # Proactively sync members to Go backend to ensure they exist for group membership
+    # Proactively sync members to Go backend synchronously to ensure they exist for group membership
     all_uuids = [user_id | (params["members"] || params["member_ids"] || [])]
     Enum.each(all_uuids, fn uuid -> 
-      Revoluchat.Accounts.sync_user_profile_to_advance_tier(app_id, uuid)
+      Revoluchat.Accounts.sync_user_profile_to_advance_tier_sync(app_id, uuid)
     end)
 
     params = params

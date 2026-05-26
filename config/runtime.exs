@@ -31,6 +31,7 @@ cors_origins =
         |> String.split(~r/\s+/)
         |> Enum.map(fn token ->
           token = String.replace(token, ~r/['"]/, "")
+
           cond do
             String.starts_with?(token, "https://") -> token
             String.starts_with?(token, "http://") -> token
@@ -50,7 +51,6 @@ cors_origins =
     true ->
       "*"
   end
-
 
 config :cors_plug,
   origin: cors_origins,

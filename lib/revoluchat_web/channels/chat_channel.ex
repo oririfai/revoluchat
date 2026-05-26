@@ -781,9 +781,9 @@ defmodule RevoluchatWeb.ChatChannel do
 
     raw_id = clean_id(group_id)
 
-    # Sync members to Advance tier first
+    # Sync members to Advance tier first synchronously
     Enum.each(user_ids, fn uid ->
-      Revoluchat.Accounts.sync_user_profile_to_advance_tier(app_id, uid)
+      Revoluchat.Accounts.sync_user_profile_to_advance_tier_sync(app_id, uid)
     end)
 
     case Chat.add_members(app_id, raw_id, user_ids, role) do
