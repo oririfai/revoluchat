@@ -21,10 +21,36 @@ if System.get_env("PHX_SERVER") do
 end
 
 cors_origins =
-  case System.get_env("CORS_ALLOWED_ORIGINS") do
-    nil -> "*"
-    origins -> String.split(origins, ",")
+  cond do
+    origins_env = System.get_env("CORS_ALLOWED_ORIGINS") ->
+      String.split(origins_env, ",")
+
+    csp_env = System.get_env("CSP_CONNECT_SRC") ->
+      parsed_origins =
+        csp_env
+        |> String.split(~r/\s+/)
+        |> Enum.map(fn token ->
+          token = String.replace(token, ~r/['"]/, "")
+          cond do
+            String.starts_with?(token, "https://") -> token
+            String.starts_with?(token, "http://") -> token
+            String.starts_with?(token, "wss://") -> String.replace(token, "wss://", "https://")
+            String.starts_with?(token, "ws://") -> String.replace(token, "ws://", "http://")
+            true -> nil
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+
+      case parsed_origins do
+        [] -> "*"
+        list -> list
+      end
+
+    true ->
+      "*"
   end
+
 
 config :cors_plug,
   origin: cors_origins,
