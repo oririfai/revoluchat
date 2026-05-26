@@ -172,11 +172,9 @@ defmodule RevoluchatWeb.ChatChannel do
     if_authorized(socket, fn ->
       user_id = socket.assigns.user_id
       app_id = socket.assigns.app_id
-      Logger.info("[READ_RECEIPT_DEBUG] handle_in mark_read: user_id=#{user_id}, app_id=#{app_id}, message_id=#{message_id}")
 
       case Chat.mark_read(app_id, message_id, user_id) do
         {:ok, message} ->
-          Logger.info("[READ_RECEIPT_DEBUG] Chat.mark_read success: message_id=#{message_id}, status=#{get_status(message)}")
           broadcast!(socket, "message_read", %{
             message_id: message_id,
             read_by: user_id,
@@ -195,11 +193,21 @@ defmodule RevoluchatWeb.ChatChannel do
                   conversation_id: conversation_id,
                   type: "direct"
                 }
-                Logger.info("[READ_RECEIPT_DEBUG] Broadcasting conversation_updated to direct users: #{conversation.user_a_id}, #{conversation.user_b_id}")
-                RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_a_id}", "conversation_updated", update_payload)
-                RevoluchatWeb.Endpoint.broadcast("user:#{conversation.user_b_id}", "conversation_updated", update_payload)
-              _ -> 
-                Logger.error("[READ_RECEIPT_DEBUG] Failed to get conversation_for_user for: #{conversation_id}")
+
+                RevoluchatWeb.Endpoint.broadcast(
+                  "user:#{conversation.user_a_id}",
+                  "conversation_updated",
+                  update_payload
+                )
+
+                RevoluchatWeb.Endpoint.broadcast(
+                  "user:#{conversation.user_b_id}",
+                  "conversation_updated",
+                  update_payload
+                )
+
+              _ ->
+                nil
             end
           else
             if group_id do
@@ -209,12 +217,17 @@ defmodule RevoluchatWeb.ChatChannel do
                     conversation_id: group_id,
                     type: "group"
                   }
-                  Logger.info("[READ_RECEIPT_DEBUG] Broadcasting conversation_updated to group members: #{inspect(Enum.map(group.members, & &1.user_id))}")
+
                   Enum.each(group.members, fn member ->
-                    RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", update_payload)
+                    RevoluchatWeb.Endpoint.broadcast(
+                      "user:#{member.user_id}",
+                      "conversation_updated",
+                      update_payload
+                    )
                   end)
-                _ -> 
-                  Logger.error("[READ_RECEIPT_DEBUG] Failed to get_group for: #{group_id}")
+
+                _ ->
+                  nil
               end
             end
           end
@@ -222,7 +235,6 @@ defmodule RevoluchatWeb.ChatChannel do
           {:reply, :ok, socket}
 
         {:error, reason} ->
-          Logger.error("[READ_RECEIPT_DEBUG] Chat.mark_read failed for message_id=#{message_id}: #{inspect(reason)}")
           {:reply, {:error, %{reason: "not_found"}}, socket}
       end
     end)
