@@ -47,6 +47,29 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
     ChatClient.unarchive_conversation(app_id, ids, user_id)
   end
 
+  # ─── Status ───────────────────────────────────────────────────────────────────
+
+  def create_status(attrs) do
+    case ChatClient.create_status(attrs) do
+      {:ok, status} -> {:ok, normalize_status(status)}
+      error -> error
+    end
+  end
+
+  def list_statuses(app_id, requestor_id, contact_ids) do
+    ChatClient.list_statuses(app_id, requestor_id, contact_ids)
+    |> Enum.map(&normalize_status/1)
+  end
+
+  def view_status(app_id, status_id, viewer_id) do
+    ChatClient.view_status(app_id, status_id, viewer_id)
+  end
+
+  def delete_status(app_id, status_id, user_id) do
+    ChatClient.delete_status(app_id, status_id, user_id)
+  end
+
+
   # ─── Messages ─────────────────────────────────────────────────────────────────
 
   def insert_message(attrs) do
@@ -181,6 +204,24 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
 
   # ─── Private Helpers ─────────────────────────────────────────────────────────
 
+  # ─── Normalizers ──────────────────────────────────────────────────────────────
+
+  defp normalize_status(nil), do: nil
+  defp normalize_status(status) do
+    %{
+      id: status.id,
+      app_id: status.app_id,
+      user_id: status.user_id,
+      type: status.type,
+      content: status.content,
+      attachment_id: status.attachment_id,
+      background_color: status.background_color,
+      font_style: status.font_style,
+      expires_at: parse_dt(status.expires_at),
+      created_at: parse_dt(status.created_at)
+    }
+  end
+
   defp normalize_conversation(nil), do: nil
   defp normalize_conversation(conv) do
     %{conv | 
@@ -254,6 +295,9 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
 
   defp parse_dt(nil), do: nil
   defp parse_dt(""), do: nil
+  defp parse_dt(%{seconds: seconds, nanos: nanos}) when is_integer(seconds) and is_integer(nanos) do
+    DateTime.from_unix!(seconds * 1_000_000_000 + nanos, :nanosecond)
+  end
   defp parse_dt(str) when is_binary(str) do
     case DateTime.from_iso8601(str) do
       {:ok, dt, _} -> dt

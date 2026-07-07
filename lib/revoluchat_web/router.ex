@@ -130,6 +130,17 @@ defmodule RevoluchatWeb.Router do
     post("/groups/:id/leave", GroupController, :leave)
     post("/groups/:id/mute", GroupController, :mute)
     post("/groups/:id/accept", GroupController, :accept)
+
+    # E2EE Keys
+    post("/e2ee/keys/register", E2EEController, :register)
+    get("/e2ee/keys/bundle/:user_id", E2EEController, :get_bundle)
+    post("/e2ee/keys/replenish", E2EEController, :replenish)
+
+    # Status
+    get("/statuses", StatusController, :index)
+    post("/statuses", StatusController, :create)
+    post("/statuses/:id/view", StatusController, :view)
+    delete("/statuses/:id", StatusController, :delete)
   end
 
   scope "/api/v1", RevoluchatWeb do

@@ -758,6 +758,118 @@ defmodule Revoluchat.V1.DeleteCallHistoryResponse do
   field :count, 1, type: :uint32
 end
 
+defmodule Revoluchat.V1.Status do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.Status",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :id, 1, type: :string
+  field :app_id, 2, type: :string, json_name: "appId"
+  field :user_id, 3, type: :string, json_name: "userId"
+  field :type, 4, type: :string
+  field :content, 5, type: :string
+  field :attachment_id, 6, type: :string, json_name: "attachmentId"
+  field :background_color, 7, type: :string, json_name: "backgroundColor"
+  field :font_style, 8, type: :string, json_name: "fontStyle"
+  field :expires_at, 9, type: :string, json_name: "expiresAt"
+  field :created_at, 10, type: :string, json_name: "createdAt"
+  field :views, 11, repeated: true, type: Revoluchat.V1.StatusView
+end
+
+defmodule Revoluchat.V1.StatusView do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.StatusView",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :viewer_id, 1, type: :string, json_name: "viewerId"
+  field :viewed_at, 2, type: :string, json_name: "viewedAt"
+end
+
+defmodule Revoluchat.V1.CreateStatusRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.CreateStatusRequest",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :app_id, 1, type: :string, json_name: "appId"
+  field :user_id, 2, type: :string, json_name: "userId"
+  field :type, 3, type: :string
+  field :content, 4, type: :string
+  field :attachment_id, 5, type: :string, json_name: "attachmentId"
+  field :background_color, 6, type: :string, json_name: "backgroundColor"
+  field :font_style, 7, type: :string, json_name: "fontStyle"
+  field :ttl_seconds, 8, type: :uint32, json_name: "ttlSeconds"
+end
+
+defmodule Revoluchat.V1.CreateStatusResponse do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.CreateStatusResponse",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :status, 1, type: Revoluchat.V1.Status
+end
+
+defmodule Revoluchat.V1.ListStatusesRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.ListStatusesRequest",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :app_id, 1, type: :string, json_name: "appId"
+  field :requestor_id, 2, type: :string, json_name: "requestorId"
+  field :contact_ids, 3, repeated: true, type: :string, json_name: "contactIds"
+end
+
+defmodule Revoluchat.V1.ListStatusesResponse do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.ListStatusesResponse",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :statuses, 1, repeated: true, type: Revoluchat.V1.Status
+end
+
+defmodule Revoluchat.V1.ViewStatusRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.ViewStatusRequest",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :app_id, 1, type: :string, json_name: "appId"
+  field :status_id, 2, type: :string, json_name: "statusId"
+  field :viewer_id, 3, type: :string, json_name: "viewerId"
+end
+
+defmodule Revoluchat.V1.DeleteStatusRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "revoluchat.v1.DeleteStatusRequest",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :app_id, 1, type: :string, json_name: "appId"
+  field :status_id, 2, type: :string, json_name: "statusId"
+  field :user_id, 3, type: :string, json_name: "userId"
+end
+
 defmodule Revoluchat.V1.ConversationService.Service do
   @moduledoc false
 
@@ -768,10 +880,6 @@ defmodule Revoluchat.V1.ConversationService.Service do
       Revoluchat.V1.CreateConversationResponse
 
   rpc :ListConversations,
-      Revoluchat.V1.ListConversationsRequest,
-      Revoluchat.V1.ListConversationsResponse
-
-  rpc :ListArchivedConversations,
       Revoluchat.V1.ListConversationsRequest,
       Revoluchat.V1.ListConversationsResponse
 
@@ -786,6 +894,10 @@ defmodule Revoluchat.V1.ConversationService.Service do
   rpc :UnarchiveConversation,
       Revoluchat.V1.UnarchiveConversationRequest,
       Revoluchat.V1.ActionResponse
+
+  rpc :ListArchivedConversations,
+      Revoluchat.V1.ListConversationsRequest,
+      Revoluchat.V1.ListConversationsResponse
 end
 
 defmodule Revoluchat.V1.ConversationService.Stub do
@@ -898,4 +1010,24 @@ defmodule Revoluchat.V1.CallService.Stub do
   @moduledoc false
 
   use GRPC.Stub, service: Revoluchat.V1.CallService.Service
+end
+
+defmodule Revoluchat.V1.StatusService.Service do
+  @moduledoc false
+
+  use GRPC.Service, name: "revoluchat.v1.StatusService", protoc_gen_elixir_version: "0.16.0"
+
+  rpc :CreateStatus, Revoluchat.V1.CreateStatusRequest, Revoluchat.V1.CreateStatusResponse
+
+  rpc :ListStatuses, Revoluchat.V1.ListStatusesRequest, Revoluchat.V1.ListStatusesResponse
+
+  rpc :ViewStatus, Revoluchat.V1.ViewStatusRequest, Revoluchat.V1.ActionResponse
+
+  rpc :DeleteStatus, Revoluchat.V1.DeleteStatusRequest, Revoluchat.V1.ActionResponse
+end
+
+defmodule Revoluchat.V1.StatusService.Stub do
+  @moduledoc false
+
+  use GRPC.Stub, service: Revoluchat.V1.StatusService.Service
 end

@@ -8,6 +8,7 @@ defmodule Revoluchat.Grpc.ChatClient do
   alias Revoluchat.V1.MessageService.Stub, as: MsgStub
   alias Revoluchat.V1.GroupService.Stub, as: GroupStub
   alias Revoluchat.V1.AttachmentService.Stub, as: AttStub
+  alias Revoluchat.V1.StatusService.Stub, as: StatusStub
 
   alias Revoluchat.V1.{
     CreateConversationRequest,
@@ -31,7 +32,11 @@ defmodule Revoluchat.Grpc.ChatClient do
     ListAttachmentsByIdsRequest,
     DeleteConversationRequest,
     ArchiveConversationRequest,
-    UnarchiveConversationRequest
+    UnarchiveConversationRequest,
+    CreateStatusRequest,
+    ListStatusesRequest,
+    ViewStatusRequest,
+    DeleteStatusRequest
   }
 
   defp endpoint, do: System.get_env("CHAT_SERVICE_GRPC_ENDPOINT", "localhost:50051")
@@ -495,6 +500,81 @@ defmodule Revoluchat.Grpc.ChatClient do
       response.messages
     else
       _ -> []
+    end
+  end
+
+  # ─── Status ───────────────────────────────────────────────────────────────────
+
+  def create_status(attrs) do
+    request = %CreateStatusRequest{
+      app_id: attrs.app_id,
+      user_id: ensure_string(attrs.user_id),
+      type: attrs.type,
+      content: attrs.content || "",
+      attachment_id: attrs.attachment_id || "",
+      background_color: attrs.background_color || "",
+      font_style: attrs.font_style || "",
+      ttl_seconds: attrs.ttl_seconds || 86400
+    }
+
+    with {:ok, channel} <- connect(),
+         {:ok, response} <-
+           StatusStub.create_status(channel, request, metadata: metadata(attrs.user_id, attrs.app_id)) do
+      {:ok, response.status}
+    else
+      {:error, reason} ->
+        Logger.error("[gRPC] StatusService.create_status error: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  def list_statuses(app_id, requestor_id, contact_ids) do
+    request = %ListStatusesRequest{
+      app_id: app_id,
+      requestor_id: ensure_string(requestor_id),
+      contact_ids: Enum.map(contact_ids, &ensure_string/1)
+    }
+
+    with {:ok, channel} <- connect(),
+         {:ok, response} <-
+           StatusStub.list_statuses(channel, request, metadata: metadata(requestor_id, app_id)) do
+      response.statuses
+    else
+      _ -> []
+    end
+  end
+
+  def view_status(app_id, status_id, viewer_id) do
+    request = %ViewStatusRequest{
+      status_id: ensure_string(status_id),
+      viewer_id: ensure_string(viewer_id)
+    }
+
+    with {:ok, channel} <- connect(),
+         {:ok, response} <-
+           StatusStub.view_status(channel, request, metadata: metadata(viewer_id, app_id)) do
+      {:ok, response}
+    else
+      {:error, reason} ->
+        Logger.error("[gRPC] StatusService.view_status error: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  def delete_status(app_id, status_id, user_id) do
+    request = %DeleteStatusRequest{
+      app_id: app_id,
+      status_id: ensure_string(status_id)
+    }
+
+    with {:ok, channel} <- connect(),
+         {:ok, response} <-
+           StatusStub.delete_status(channel, request, metadata: metadata(user_id, app_id)) do
+      {:ok, response}
+    else
+      {:error, reason} ->
+        Logger.error("[gRPC] StatusService.delete_status error: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 

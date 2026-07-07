@@ -14,6 +14,7 @@ defmodule RevoluchatWeb.UserSocket do
     with {:api_key, %ApiKey{app_id: api_key_app_id}} <-
            {:api_key, Revoluchat.Accounts.get_api_key_by_key(api_key)},
          {:token, {:ok, claims}} <- {:token, Revoluchat.Accounts.verify_token(token)},
+         _log <- Logger.warning("Comparing App ID -> From DB: #{inspect(api_key_app_id)} (Key: #{inspect(api_key)}) | From Token: #{inspect(claims.app_id)}"),
          {:app_check, true} <-
            {:app_check, is_nil(claims.app_id) or claims.app_id == api_key_app_id},
          {:user, {:ok, user}} <- {:user, Revoluchat.Accounts.verify_user_exists(claims.user_id)} do

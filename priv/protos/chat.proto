@@ -19,6 +19,8 @@ service ConversationService {
   rpc ArchiveConversation (ArchiveConversationRequest) returns (ActionResponse);
   // Unarchives a conversation for the requesting user.
   rpc UnarchiveConversation (UnarchiveConversationRequest) returns (ActionResponse);
+  // Lists archived conversations for a specific user.
+  rpc ListArchivedConversations (ListConversationsRequest) returns (ListConversationsResponse);
 }
 
 message DeleteConversationRequest {
@@ -119,6 +121,7 @@ message GroupMember {
   bool is_muted = 3;
   string joined_at = 4;
   string status = 5; // "pending", "accepted"
+  string archived_at = 6;
 }
 
 message CreateGroupRequest {
@@ -435,4 +438,69 @@ message DeleteCallHistoryRequest {
 
 message DeleteCallHistoryResponse {
   uint32 count = 1;
+}
+
+// ─── STATUS (ADVANCE TIER) ──────────────────────────────────────────────────
+
+service StatusService {
+  rpc CreateStatus (CreateStatusRequest) returns (CreateStatusResponse);
+  rpc ListStatuses (ListStatusesRequest) returns (ListStatusesResponse);
+  rpc ViewStatus (ViewStatusRequest) returns (ActionResponse);
+  rpc DeleteStatus (DeleteStatusRequest) returns (ActionResponse);
+}
+
+message Status {
+  string id = 1;
+  string app_id = 2;
+  string user_id = 3;
+  string type = 4; // "text", "image", "video"
+  string content = 5;
+  string attachment_id = 6;
+  string background_color = 7;
+  string font_style = 8;
+  string expires_at = 9;
+  string created_at = 10;
+  repeated StatusView views = 11;
+}
+
+message StatusView {
+  string viewer_id = 1;
+  string viewed_at = 2;
+}
+
+message CreateStatusRequest {
+  string app_id = 1;
+  string user_id = 2;
+  string type = 3;
+  string content = 4;
+  string attachment_id = 5;
+  string background_color = 6;
+  string font_style = 7;
+  uint32 ttl_seconds = 8; // E.g., 86400 for 24h
+}
+
+message CreateStatusResponse {
+  Status status = 1;
+}
+
+message ListStatusesRequest {
+  string app_id = 1;
+  string requestor_id = 2;
+  repeated string contact_ids = 3; // The IDs of users whose status we want to fetch
+}
+
+message ListStatusesResponse {
+  repeated Status statuses = 1;
+}
+
+message ViewStatusRequest {
+  string app_id = 1;
+  string status_id = 2;
+  string viewer_id = 3;
+}
+
+message DeleteStatusRequest {
+  string app_id = 1;
+  string status_id = 2;
+  string user_id = 3;
 }
