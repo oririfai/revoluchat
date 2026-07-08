@@ -232,7 +232,7 @@ defmodule Revoluchat.Accounts do
         {:ok, claims}
 
       {:error, reason} ->
-        Logger.warning("Validasi token gagal")
+        Logger.warning("Validasi token gagal: #{inspect(reason)}")
         {:error, reason}
     end
   end
