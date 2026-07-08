@@ -103,13 +103,35 @@ defmodule Revoluchat.Accounts.JwksStrategy do
           _ -> ["RS256"]
         end
 
-      # Trigger the check_fetch to fetch and cache signers
-      case JokenJwks.DefaultStrategyTemplate.check_fetch(__MODULE__, full_url, [jws_supported_algs: algs]) do
-        {:ok, signers} ->
-          Logger.info("JWKS signers successfully refreshed. Count: #{length(signers)}")
+      # Lakukan HTTP request manual untuk mem-bypass JokenJwks.check_fetch yang menolak key tanpa kid
+      :inets.start()
+      :ssl.start()
 
+      case :httpc.request(:get, {String.to_charlist(full_url), []}, [ssl: [verify: :verify_none]], []) do
+        {:ok, {{_, status, _}, _headers, body}} when status in 200..299 ->
+          try do
+            json_body = Jason.decode!(to_string(body))
+            keys = json_body["keys"] || []
+            
+            # Panggil update_signers() yang sudah kita buat. Ini akan meng-inject "dummy_kid"
+            # dan menaruh signers ke dalam ETS cache milik JokenJwks.
+            update_signers(keys)
+            
+            Logger.info("JWKS signers successfully refreshed manually. Count: #{length(keys)}")
+            {:ok, keys}
+          rescue
+            e ->
+              Logger.error("Failed to parse JWKS JSON response: #{inspect(e)}")
+              {:error, :json_parse_error}
+          end
+          
+        {:ok, {{_, status, _}, _, body}} ->
+          Logger.error("Failed to refresh JWKS signers. HTTP status: #{status}, Body: #{body}")
+          {:error, {:http_status, status}}
+          
         {:error, reason} ->
-          Logger.error("Failed to refresh JWKS signers. HTTP error: #{inspect(reason)}")
+          Logger.error("Failed to refresh JWKS signers. HTTP request error: #{inspect(reason)}")
+          {:error, reason}
       end
     end
   end
@@ -184,6 +206,9 @@ defmodule Revoluchat.Accounts.JwksStrategy do
   end
 
   defp parse_key(key, supported_algs) do
+    # Jika server JWKS klien tidak memberikan kid, kita buatkan dummy kid
+    key = if is_binary(key["kid"]), do: key, else: Map.put(key, "kid", "dummy_kid_#{:os.system_time(:microsecond)}")
+
     cond do
       key["use"] == "enc" -> {:error, :encryption_key}
       not is_binary(key["kid"]) -> {:error, :missing_kid}

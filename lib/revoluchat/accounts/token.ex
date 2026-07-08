@@ -75,7 +75,7 @@ defmodule Revoluchat.Accounts.Token do
   defp parse_user_id(sub) when is_integer(sub), do: to_string(sub)
   defp parse_user_id(sub) when is_binary(sub), do: sub
 
-  defp fallback_verify_without_kid(token_string) do
+  defp fallback_verify_without_kid(token_string, is_retry \\ false) do
     case Revoluchat.Accounts.JwksStrategy.list_signers() do
       {:ok, signers} when is_map(signers) and map_size(signers) > 0 ->
         # Coba verifikasi token dengan setiap public key (signer) yang ada
@@ -87,7 +87,16 @@ defmodule Revoluchat.Accounts.Token do
         end)
 
       _ ->
-        {:error, :no_signers_fetched}
+        if is_retry do
+          {:error, :no_signers_fetched}
+        else
+          require Logger
+          Logger.warning("fallback_verify_without_kid: No signers found in cache. Attempting synchronous refresh of JWKS keys...")
+          Revoluchat.Accounts.JwksStrategy.refresh_signers()
+          
+          # Coba lagi setelah refresh
+          fallback_verify_without_kid(token_string, true)
+        end
     end
   end
 end
