@@ -9,6 +9,7 @@ defmodule RevoluchatWeb.DashboardComponents do
   attr(:active_tab, :atom, required: true)
   attr(:admin_name, :string, default: "Admin")
   attr(:collapsed, :boolean, default: false)
+  attr(:current_admin, :map, default: nil)
 
   def sidebar(assigns) do
     ~H"""
@@ -28,48 +29,66 @@ defmodule RevoluchatWeb.DashboardComponents do
           <% end %>
         </div>
         <nav class="mt-5 flex-1 px-3 space-y-1">
-          <.nav_item
-            href={~p"/admin"}
-            active={@active_tab == :summary}
-            icon="hero-squares-2x2"
-            text="Summary"
-            collapsed={@collapsed}
-          />
-          <.nav_item
-            href={~p"/admin/activity"}
-            active={@active_tab == :activity}
-            icon="hero-chart-bar-square"
-            text="Activity"
-            collapsed={@collapsed}
-          />
-          <.nav_item
-            href={~p"/admin/users"}
-            active={@active_tab == :users}
-            icon="hero-users"
-            text="Users"
-            collapsed={@collapsed}
-          />
-          <.nav_item
-            href={~p"/admin/setting"}
-            active={@active_tab == :setting}
-            icon="hero-cog-6-tooth"
-            text="Setting"
-            collapsed={@collapsed}
-          />
-          <.nav_item
-            href={~p"/admin/apikeys"}
-            active={@active_tab == :api_keys}
-            icon="hero-command-line"
-            text="API Keys"
-            collapsed={@collapsed}
-          />
-          <.nav_item
-            href={~p"/admin/serverkeys"}
-            active={@active_tab == :server_keys}
-            icon="hero-server"
-            text="Server Keys"
-            collapsed={@collapsed}
-          />
+          <%= if Revoluchat.Accounts.Admin.has_permission?(@current_admin, "view_dashboard") do %>
+            <.nav_item
+              href={~p"/admin"}
+              active={@active_tab == :summary}
+              icon="hero-squares-2x2"
+              text="Summary"
+              collapsed={@collapsed}
+            />
+            <.nav_item
+              href={~p"/admin/activity"}
+              active={@active_tab == :activity}
+              icon="hero-chart-bar-square"
+              text="Activity"
+              collapsed={@collapsed}
+            />
+          <% end %>
+
+          <%= if Revoluchat.Accounts.Admin.has_permission?(@current_admin, "manage_users") do %>
+            <.nav_item
+              href={~p"/admin/users"}
+              active={@active_tab == :users}
+              icon="hero-users"
+              text="Users"
+              collapsed={@collapsed}
+            />
+          <% end %>
+
+          <%= if Revoluchat.Accounts.Admin.has_permission?(@current_admin, "manage_settings") do %>
+            <.nav_item
+              href={~p"/admin/setting"}
+              active={@active_tab == :setting}
+              icon="hero-cog-6-tooth"
+              text="Setting"
+              collapsed={@collapsed}
+            />
+            <.nav_item
+              href={~p"/admin/apikeys"}
+              active={@active_tab == :api_keys}
+              icon="hero-command-line"
+              text="API Keys"
+              collapsed={@collapsed}
+            />
+            <.nav_item
+              href={~p"/admin/serverkeys"}
+              active={@active_tab == :server_keys}
+              icon="hero-server"
+              text="Server Keys"
+              collapsed={@collapsed}
+            />
+          <% end %>
+          
+          <%= if Revoluchat.Accounts.Admin.has_permission?(@current_admin, "manage_admins") do %>
+            <.nav_item
+              href={~p"/admin/admins"}
+              active={@active_tab == :admins}
+              icon="hero-shield-check"
+              text="Admins & Roles"
+              collapsed={@collapsed}
+            />
+          <% end %>
         </nav>
       </div>
 

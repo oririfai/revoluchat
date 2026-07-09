@@ -1,5 +1,5 @@
 <div class="flex min-h-full">
-  <.sidebar active_tab={@active_tab} admin_name="Admin" collapsed={@sidebar_collapsed} />
+  <.sidebar active_tab={@active_tab} admin_name={@current_admin.email} current_admin={@current_admin} collapsed={@sidebar_collapsed} />
 
   <!-- Main Content -->
   <div class={[

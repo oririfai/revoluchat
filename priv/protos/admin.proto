@@ -9,6 +9,9 @@ service AdminService {
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
   rpc SuspendUser(SuspendUserRequest) returns (ActionResponse);
   rpc UnsuspendUser(UnsuspendUserRequest) returns (ActionResponse);
+  
+  // Stats
+  rpc GetGlobalChatStats(GetGlobalChatStatsRequest) returns (GetGlobalChatStatsResponse);
 }
 
 message ListUsersRequest {
@@ -47,4 +50,19 @@ message UnsuspendUserRequest {
 message ActionResponse {
   bool success = 1;
   string message = 2;
+}
+
+message GetGlobalChatStatsRequest {
+}
+
+message MessageVolumeStat {
+  string date = 1;
+  int64 count = 2;
+}
+
+message GetGlobalChatStatsResponse {
+  int64 total_messages = 1;
+  int64 total_conversations = 2;
+  repeated MessageVolumeStat message_volume_stats = 3;
+  int64 total_connected_users = 4;
 }

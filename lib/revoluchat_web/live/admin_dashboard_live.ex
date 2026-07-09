@@ -12,7 +12,8 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     ApiKeysSection,
     ServerKeysSection,
     DocumentationSection,
-    UserSection
+    UserSection,
+    AdminsSection
   }
 
   @impl true
@@ -50,7 +51,13 @@ defmodule RevoluchatWeb.AdminDashboardLive do
      |> assign(show_user_detail_modal: false)
      |> assign(show_suspend_modal: false)
      |> assign(show_unsuspend_modal: false)
-     |> assign(user_connection_error: nil)}
+     |> assign(user_connection_error: nil)
+     |> assign(total_users: 0)
+     |> assign(total_active_users: 0)
+     |> assign(total_suspended_users: 0)
+     |> assign(total_conversations: 0)
+     |> assign(message_volume_stats: [])
+     |> assign(total_connected_users: 0)}
   end
 
   @impl true
@@ -63,24 +70,40 @@ defmodule RevoluchatWeb.AdminDashboardLive do
   end
 
   defp apply_action(socket, :summary, _params) do
-    socket |> assign(active_tab: :summary) |> assign(page_title: "Summary")
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "view_dashboard") do
+      socket |> assign(active_tab: :summary) |> assign(page_title: "Summary")
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin/setting")
+    end
   end
 
   defp apply_action(socket, :activity, _params) do
-    socket |> assign(active_tab: :activity) |> assign(page_title: "Activity")
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "view_dashboard") do
+      socket |> assign(active_tab: :activity) |> assign(page_title: "Activity")
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin/setting")
+    end
   end
 
   defp apply_action(socket, :users, _params) do
-    socket
-    |> assign(active_tab: :users)
-    |> assign(page_title: "Users")
-    |> assign(user_page: 1)
-    |> assign(user_search: "")
-    |> assign_users()
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "manage_users") do
+      socket
+      |> assign(active_tab: :users)
+      |> assign(page_title: "Users")
+      |> assign(user_page: 1)
+      |> assign(user_search: "")
+      |> assign_users()
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin")
+    end
   end
 
   defp apply_action(socket, :setting, _params) do
-    socket |> assign(active_tab: :setting) |> assign(page_title: "Settings")
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "manage_settings") do
+      socket |> assign(active_tab: :setting) |> assign(page_title: "Settings")
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin")
+    end
   end
 
   defp apply_action(socket, :documentation, _params) do
@@ -88,62 +111,84 @@ defmodule RevoluchatWeb.AdminDashboardLive do
   end
 
   defp apply_action(socket, :api_keys, _params) do
-    api_keys =
-      try do
-        Revoluchat.Accounts.list_api_keys()
-      rescue
-        e ->
-          Logger.error("Error listing api_keys: #{inspect(e)}")
-          []
-      end
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "manage_settings") do
+      api_keys =
+        try do
+          Revoluchat.Accounts.list_api_keys()
+        rescue
+          e ->
+            Logger.error("Error listing api_keys: #{inspect(e)}")
+            []
+        end
 
-    socket
-    |> assign(active_tab: :api_keys)
-    |> assign(page_title: "API Keys")
-    |> assign(api_keys: api_keys)
-    |> assign(show_delete_modal: false)
-    |> assign(show_revoke_modal: false)
+      socket
+      |> assign(active_tab: :api_keys)
+      |> assign(page_title: "API Keys")
+      |> assign(api_keys: api_keys)
+      |> assign(show_delete_modal: false)
+      |> assign(show_revoke_modal: false)
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin")
+    end
   end
 
   defp apply_action(socket, :server_keys, _params) do
-    server_keys =
-      try do
-        Revoluchat.Accounts.list_server_keys()
-      rescue
-        e ->
-          Logger.error("Error listing server_keys: #{inspect(e)}")
-          []
-      end
-
-    connected? =
-      case Revoluchat.Accounts.check_active_server_key_connection() do
-        {:ok, :connected} -> true
-        _ -> false
-      end
-
-    signer_count =
-      if connected? do
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "manage_settings") do
+      server_keys =
         try do
-          case Revoluchat.Accounts.JwksStrategy.list_signers() do
-            {:ok, signers} -> map_size(signers)
+          Revoluchat.Accounts.list_server_keys()
+        rescue
+          e ->
+            Logger.error("Error listing server_keys: #{inspect(e)}")
+            []
+        end
+
+      connected? =
+        case Revoluchat.Accounts.check_active_server_key_connection() do
+          {:ok, :connected} -> true
+          _ -> false
+        end
+
+      signer_count =
+        if connected? do
+          try do
+            case Revoluchat.Accounts.JwksStrategy.list_signers() do
+              {:ok, signers} -> map_size(signers)
+              _ -> 0
+            end
+          rescue
             _ -> 0
           end
-        rescue
-          _ -> 0
+        else
+          0
         end
-      else
-        0
-      end
 
-    socket
-    |> assign(active_tab: :server_keys)
-    |> assign(page_title: "Server Keys")
-    |> assign(server_keys: server_keys)
-    |> assign(signer_count: signer_count)
-    |> assign(show_delete_server_modal: false)
-    |> assign(show_revoke_server_modal: false)
-    |> assign(show_server_error_modal: false)
-    |> assign(server_error_message: "")
+      socket
+      |> assign(active_tab: :server_keys)
+      |> assign(page_title: "Server Keys")
+      |> assign(server_keys: server_keys)
+      |> assign(signer_count: signer_count)
+      |> assign(show_delete_server_modal: false)
+      |> assign(show_revoke_server_modal: false)
+      |> assign(show_server_error_modal: false)
+      |> assign(server_error_message: "")
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin")
+    end
+  end
+
+  defp apply_action(socket, :admins, _params) do
+    if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "manage_admins") do
+      admins = Revoluchat.Accounts.list_admins()
+      socket
+      |> assign(active_tab: :admins)
+      |> assign(page_title: "Admins & Roles")
+      |> assign(admins: admins)
+      |> assign(show_admin_modal: false)
+      |> assign(editing_admin: nil)
+    else
+      socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin")
+    end
   end
 
   @impl true
@@ -462,6 +507,73 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     {:noreply, assign(socket, sidebar_collapsed: !socket.assigns.sidebar_collapsed)}
   end
 
+  # ─── Admins Management Events ───────────────────────────────────────────────
+
+  @impl true
+  def handle_event("open_admin_modal", _params, socket) do
+    {:noreply, assign(socket, show_admin_modal: true, editing_admin: nil)}
+  end
+
+  @impl true
+  def handle_event("close_admin_modal", _params, socket) do
+    {:noreply, assign(socket, show_admin_modal: false, editing_admin: nil)}
+  end
+
+  @impl true
+  def handle_event("edit_admin", %{"id" => id}, socket) do
+    admin = Revoluchat.Accounts.get_admin!(id)
+    {:noreply, assign(socket, show_admin_modal: true, editing_admin: admin)}
+  end
+
+  @impl true
+  def handle_event("delete_admin", %{"id" => id}, socket) do
+    admin = Revoluchat.Accounts.get_admin!(id)
+    case Revoluchat.Accounts.delete_admin(admin) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Admin deleted successfully.")
+         |> assign(admins: Revoluchat.Accounts.list_admins())}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete admin.")}
+    end
+  end
+
+  @impl true
+  def handle_event("save_admin", params, socket) do
+    permissions = params["permissions"] || []
+    role = params["role"] || "custom"
+    
+    attrs = %{
+      "email" => params["email"],
+      "role" => role,
+      "permissions" => permissions
+    }
+
+    # Only include password if provided
+    attrs = if params["password"] != "", do: Map.put(attrs, "password", params["password"]), else: attrs
+
+    result =
+      if socket.assigns.editing_admin do
+        Revoluchat.Accounts.update_admin(socket.assigns.editing_admin, attrs)
+      else
+        Revoluchat.Accounts.create_admin(attrs)
+      end
+
+    case result do
+      {:ok, _admin} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Admin saved successfully.")
+         |> assign(show_admin_modal: false, editing_admin: nil)
+         |> assign(admins: Revoluchat.Accounts.list_admins())}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        error_msg = RevoluchatWeb.CoreComponents.translate_errors(changeset)
+        {:noreply, put_flash(socket, :error, "Failed to save admin: #{error_msg}")}
+    end
+  end
+
   @impl true
   def handle_info(:refresh_stats, socket) do
     schedule_refresh()
@@ -486,12 +598,34 @@ defmodule RevoluchatWeb.AdminDashboardLive do
           0
         end
 
+      # User stats (total, active, suspended)
+      user_stats = Revoluchat.Accounts.get_user_stats()
+
+      # Chat stats (handled based on tier via Revoluchat.Chat)
+      chat_stats = Revoluchat.Chat.get_global_chat_stats()
+
+      # Fill in missing days with 0 so we always have 7 data points
+      today = Date.utc_today()
+      last_7_days = Enum.map(0..6, fn days_ago -> Date.add(today, -6 + days_ago) end)
+
+      volume_map =
+        Map.new(chat_stats.message_volume_stats, fn %{date: d, count: c} -> {d, c} end)
+
+      message_volume_stats =
+        Enum.map(last_7_days, fn date ->
+          date_str = Date.to_string(date)
+          %{date: date_str, count: Map.get(volume_map, date_str, 0)}
+        end)
+
       socket
-      |> assign(total_messages: Repo.aggregate(Revoluchat.Chat.Message, :count, :id) || 0)
-      |> assign(
-        total_conversations: Repo.aggregate(Revoluchat.Chat.Conversation, :count, :id) || 0
-      )
+      |> assign(total_messages: chat_stats.total_messages)
+      |> assign(total_conversations: chat_stats.total_conversations)
       |> assign(signer_count: signer_count)
+      |> assign(total_users: user_stats.total_users)
+      |> assign(total_active_users: user_stats.active_users)
+      |> assign(total_suspended_users: user_stats.suspended_users)
+      |> assign(message_volume_stats: message_volume_stats)
+      |> assign(total_connected_users: Map.get(chat_stats, :total_connected_users, 0))
     rescue
       e ->
         Logger.error("Error fetching stats: #{inspect(e)}")
@@ -500,6 +634,11 @@ defmodule RevoluchatWeb.AdminDashboardLive do
         |> assign(total_messages: 0)
         |> assign(total_conversations: 0)
         |> assign(signer_count: 0)
+        |> assign(total_users: 0)
+        |> assign(total_active_users: 0)
+        |> assign(total_suspended_users: 0)
+        |> assign(message_volume_stats: [])
+        |> assign(total_connected_users: 0)
     end
   end
 
@@ -623,6 +762,11 @@ defmodule RevoluchatWeb.AdminDashboardLive do
         <SummarySection.render
           total_messages={@total_messages}
           total_conversations={@total_conversations}
+          total_users={@total_users}
+          total_active_users={@total_active_users}
+          total_suspended_users={@total_suspended_users}
+          message_volume_stats={@message_volume_stats}
+          total_connected_users={@total_connected_users}
         />
       <% end %>
 
@@ -671,6 +815,15 @@ defmodule RevoluchatWeb.AdminDashboardLive do
 
       <%= if @active_tab == :documentation do %>
         <DocumentationSection.render />
+      <% end %>
+
+      <%= if @active_tab == :admins do %>
+        <AdminsSection.render
+          admins={@admins}
+          show_admin_modal={@show_admin_modal}
+          editing_admin={@editing_admin}
+          current_admin={@current_admin}
+        />
       <% end %>
     </div>
     """

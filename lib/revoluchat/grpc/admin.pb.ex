@@ -78,6 +78,46 @@ defmodule Admin.V1.ActionResponse do
   field :message, 2, type: :string
 end
 
+defmodule Admin.V1.GetGlobalChatStatsRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetGlobalChatStatsRequest",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+end
+
+defmodule Admin.V1.MessageVolumeStat do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.MessageVolumeStat",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :date, 1, type: :string
+  field :count, 2, type: :int64
+end
+
+defmodule Admin.V1.GetGlobalChatStatsResponse do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetGlobalChatStatsResponse",
+    protoc_gen_elixir_version: "0.16.0",
+    syntax: :proto3
+
+  field :total_messages, 1, type: :int64, json_name: "totalMessages"
+  field :total_conversations, 2, type: :int64, json_name: "totalConversations"
+
+  field :message_volume_stats, 3,
+    repeated: true,
+    type: Admin.V1.MessageVolumeStat,
+    json_name: "messageVolumeStats"
+
+  field :total_connected_users, 4, type: :int64, json_name: "totalConnectedUsers"
+end
+
 defmodule Admin.V1.AdminService.Service do
   @moduledoc false
 
@@ -88,6 +128,8 @@ defmodule Admin.V1.AdminService.Service do
   rpc :SuspendUser, Admin.V1.SuspendUserRequest, Admin.V1.ActionResponse
 
   rpc :UnsuspendUser, Admin.V1.UnsuspendUserRequest, Admin.V1.ActionResponse
+
+  rpc :GetGlobalChatStats, Admin.V1.GetGlobalChatStatsRequest, Admin.V1.GetGlobalChatStatsResponse
 end
 
 defmodule Admin.V1.AdminService.Stub do

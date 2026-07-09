@@ -436,6 +436,25 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
     from(c in Conversation, where: c.app_id == ^app_id and not is_nil(c.last_activity_at)) |> Repo.aggregate(:count, :id)
   end
 
+  @doc """
+  Returns total message count per day for the last 7 days (for summary chart).
+  Result: list of %{date: "YYYY-MM-DD", count: integer} ordered oldest-first.
+  """
+  def get_message_volume_stats do
+    cutoff = DateTime.utc_now() |> DateTime.add(-7 * 86_400, :second)
+
+    from(m in Message,
+      where: m.inserted_at >= ^cutoff and is_nil(m.deleted_at),
+      group_by: fragment("DATE(inserted_at)"),
+      order_by: fragment("DATE(inserted_at)"),
+      select: %{
+        date: fragment("DATE(inserted_at)::text"),
+        count: count(m.id)
+      }
+    )
+    |> Repo.all()
+  end
+
   # --- GROUPS (ADVANCE TIER ONLY) ---
   
   def create_group(_app_id, _params), do: {:error, :not_supported_in_normal_tier}

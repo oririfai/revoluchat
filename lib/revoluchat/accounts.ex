@@ -20,6 +20,64 @@ defmodule Revoluchat.Accounts do
   import Ecto.Query
   require Logger
 
+  # ─── Summary Stats ──────────────────────────────────────────────────────────
+
+  @doc """
+  Returns aggregated user statistics for the admin dashboard summary page.
+  Returns a map: %{total_users, active_users, suspended_users}.
+  For Advance Tier, attempts to get stats via gRPC, falling back to local DB.
+  For Normal Tier, queries local user_chats table directly.
+  """
+  def get_user_stats do
+    now = DateTime.utc_now()
+
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      # In Advance Tier, try gRPC — get total, active, suspended via list_users count trick
+      # Fallback to local DB if gRPC is unavailable
+      try do
+        {:ok, all} = Revoluchat.Grpc.AdminClient.list_users("", 1, 1, "all")
+        {:ok, active} = Revoluchat.Grpc.AdminClient.list_users("", 1, 1, "active")
+        {:ok, suspended} = Revoluchat.Grpc.AdminClient.list_users("", 1, 1, "suspended")
+
+        %{
+          total_users: all.total_count,
+          active_users: active.total_count,
+          suspended_users: suspended.total_count
+        }
+      rescue
+        _ -> get_user_stats_from_local(now)
+      end
+    else
+      get_user_stats_from_local(now)
+    end
+  end
+
+  defp get_user_stats_from_local(now) do
+    total = Repo.aggregate(UserChat, :count, :id) || 0
+
+    active =
+      from(uc in UserChat,
+        where:
+          uc.is_active == true and
+            (is_nil(uc.suspended_until) or uc.suspended_until < ^now)
+      )
+      |> Repo.aggregate(:count, :id) || 0
+
+    suspended =
+      from(uc in UserChat,
+        where:
+          uc.is_active == false or
+            (not is_nil(uc.suspended_until) and uc.suspended_until >= ^now)
+      )
+      |> Repo.aggregate(:count, :id) || 0
+
+    %{
+      total_users: total,
+      active_users: active,
+      suspended_users: suspended
+    }
+  end
+
   # ─── API Key Management ─────────────────────────────────────────────────────
 
   def list_api_keys do
@@ -920,5 +978,33 @@ defmodule Revoluchat.Accounts do
       end
 
     {os, browser}
+  end
+
+  def list_admins do
+    Repo.all(from a in Admin, order_by: [desc: a.inserted_at])
+  end
+
+  def get_admin!(id), do: Repo.get!(Admin, id)
+
+  def get_admin(id), do: Repo.get(Admin, id)
+
+  def create_admin(attrs \\ %{}) do
+    %Admin{}
+    |> Admin.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_admin(%Admin{} = admin, attrs) do
+    admin
+    |> Admin.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def delete_admin(%Admin{} = admin) do
+    Repo.delete(admin)
+  end
+
+  def change_admin(%Admin{} = admin, attrs \\ %{}) do
+    Admin.changeset(admin, attrs)
   end
 end

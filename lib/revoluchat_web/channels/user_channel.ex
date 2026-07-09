@@ -9,6 +9,9 @@ defmodule RevoluchatWeb.UserChannel do
 
     if user_id == authorized_user_id do
       Logger.info("UserChannel: User #{user_id} joined their private channel")
+      
+      send(self(), :after_join)
+
       {:ok, socket}
     else
       Logger.warning(
@@ -17,6 +20,13 @@ defmodule RevoluchatWeb.UserChannel do
 
       {:error, %{reason: "unauthorized"}}
     end
+  end
+
+  def handle_info(:after_join, socket) do
+    RevoluchatWeb.Presence.track(self(), "global:users", socket.assigns.user_id, %{
+      online_at: inspect(System.system_time(:second))
+    })
+    {:noreply, socket}
   end
 
   # FAST PATH SIGNALING: Accept/Reject via User Channel (Bypassing Room Join)

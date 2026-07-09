@@ -76,6 +76,7 @@ defmodule RevoluchatWeb.Router do
       live("/documentation", AdminDashboardLive, :documentation)
       live("/apikeys", AdminDashboardLive, :api_keys)
       live("/serverkeys", AdminDashboardLive, :server_keys)
+      live("/admins", AdminDashboardLive, :admins)
     end
   end
 

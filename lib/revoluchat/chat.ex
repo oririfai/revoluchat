@@ -88,6 +88,48 @@ defmodule Revoluchat.Chat do
   def count_messages_for_app(app_id), do: adapter().count_messages_for_app(app_id)
   def count_active_conversations(app_id), do: adapter().count_active_conversations(app_id)
 
+  @doc """
+  Returns message count per day for the last 7 days (always local Postgres).
+  Used for the Summary dashboard chart.
+  """
+  def get_message_volume_stats do
+    Revoluchat.Chat.Adapters.Postgres.get_message_volume_stats()
+  end
+
+  @doc """
+  Mengambil statistik global untuk admin dashboard (Total Messages, Total Conversations, Volume 7 hari).
+  Jika tier == "advance", mengambil data dari server Go (via gRPC/HTTP).
+  Jika tier == "normal", mengambil data dari local Postgres.
+  """
+  def get_global_chat_stats do
+    total_connected_users =
+      try do
+        RevoluchatWeb.Presence.list("global:users") |> map_size()
+      rescue
+        _ -> 0
+      end
+
+    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
+      # Ambil dari server satunya (Go Backend) via gRPC
+      case Revoluchat.Grpc.AdminClient.get_global_stats() do
+        {:ok, stats} -> Map.put(stats, :total_connected_users, total_connected_users)
+        _ -> %{total_messages: 0, total_conversations: 0, message_volume_stats: [], total_connected_users: total_connected_users}
+      end
+    else
+      # Ambil dari db elixir (Postgres)
+      total_messages = Revoluchat.Repo.aggregate(Revoluchat.Chat.Message, :count, :id) || 0
+      total_conversations = Revoluchat.Repo.aggregate(Revoluchat.Chat.Conversation, :count, :id) || 0
+      raw_volume = Revoluchat.Chat.Adapters.Postgres.get_message_volume_stats()
+
+      %{
+        total_messages: total_messages,
+        total_conversations: total_conversations,
+        message_volume_stats: raw_volume,
+        total_connected_users: total_connected_users
+      }
+    end
+  end
+
   # --- GROUPS (ADVANCE TIER) ---
 
   def create_group(app_id, params), do: adapter().create_group(app_id, params)

@@ -578,6 +578,9 @@ defmodule Revoluchat.Grpc.ChatClient do
     end
   end
 
+  # ─── Analytics ────────────────────────────────────────────────────────────────
+
+  # The get_global_stats function was moved to AdminClient using gRPC instead of HTTP.
   # Fallback for other methods - will be implemented as needed
   def method_missing(name, _args) do
     Logger.warning("[gRPC] ChatClient: Method #{name} not implemented yet.")

@@ -8,6 +8,7 @@ defmodule Revoluchat.Grpc.AdminClient do
     ListUsersRequest,
     SuspendUserRequest,
     UnsuspendUserRequest,
+    GetGlobalChatStatsRequest,
     AdminService.Stub
   }
 
@@ -94,5 +95,40 @@ defmodule Revoluchat.Grpc.AdminClient do
       inserted_at: user.inserted_at,
       is_kyc: user.is_kyc
     }
+  end
+
+  @doc """
+  Get global chat stats for Admin Dashboard.
+  """
+  def get_global_stats do
+    request = %GetGlobalChatStatsRequest{}
+    
+    # Use Chat service endpoint because stats is implemented in chatcx-be
+    # although it's an AdminService. If chatcx-be is the single backend,
+    # we can use CHAT_SERVICE_GRPC_ENDPOINT which points to chatcx-be (port 50055).
+    chat_endpoint = System.get_env("CHAT_SERVICE_GRPC_ENDPOINT", "localhost:50055")
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(chat_endpoint, adapter_opts: [connect_timeout: 1000]) do
+      {:ok, channel} ->
+        case Stub.get_global_chat_stats(channel, request, metadata: metadata) do
+          {:ok, response} ->
+            stats = %{
+              total_messages: response.total_messages,
+              total_conversations: response.total_conversations,
+              total_connected_users: response.total_connected_users,
+              message_volume_stats: Enum.map(response.message_volume_stats, fn stat ->
+                %{date: stat.date, count: stat.count}
+              end)
+            }
+            {:ok, stats}
+          {:error, reason} ->
+            Logger.error("[AdminClient] GetGlobalChatStats error: #{inspect(reason)}")
+            {:error, reason}
+        end
+      {:error, reason} ->
+        Logger.error("[AdminClient] Failed to connect to gRPC: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 end
