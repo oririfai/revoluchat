@@ -58,7 +58,12 @@ config :revoluchat, Oban,
   plugins: [
     # Prune completed/failed jobs after 1 hour (high-load optimization)
     {Oban.Plugins.Pruner, max_age: 3600},
-    Oban.Plugins.Lifeline
+    Oban.Plugins.Lifeline,
+    {Oban.Plugins.Cron,
+     crontab: [
+       # Jalankan sweeper setiap menit
+       {"* * * * *", Revoluchat.Workers.MessageTtlSweeper}
+     ]}
   ],
   queues: [
     default: 10,

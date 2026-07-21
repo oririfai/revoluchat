@@ -19,5 +19,7 @@ defmodule Revoluchat.Accounts.User do
     field :status, :string
     field :is_kyc, :boolean, source: :is_kyc
     field :fcm, :string
+    # NOTE: last_seen_at is NOT in this external table.
+    # It is tracked in user_chats (local Elixir table).
   end
 end

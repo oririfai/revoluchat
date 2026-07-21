@@ -100,6 +100,7 @@ defmodule Revoluchat.Workers.FcmPushWorker do
     # Handle both string and atom keys for robustness in extra args
     extra_conversation_name = Map.get(extra_args, "conversation_name") || Map.get(extra_args, :conversation_name)
     extra_sender_avatar_url = Map.get(extra_args, "sender_avatar_url") || Map.get(extra_args, :sender_avatar_url)
+    extra_encrypted_body = Map.get(extra_args, "encrypted_body") || Map.get(extra_args, :encrypted_body)
 
     # Only query DB/gRPC if we don't already have both name and avatar passed in extra_args
     has_extra_group_info =
@@ -173,14 +174,21 @@ defmodule Revoluchat.Workers.FcmPushWorker do
 
     title = "#{sender_name} • #{time_str}"
 
-    body =
+    raw_body = extra_encrypted_body || Map.get(msg_map, "body") || Map.get(msg_map, :body) || ""
+    
+    is_e2ee =
       cond do
-        Map.get(msg_map, "is_encrypted") == true or Map.get(msg_map, "is_encrypted") == "true" or
-        Map.get(msg_map, :is_encrypted) == true or Map.get(msg_map, :is_encrypted) == "true" ->
-          "Mengirimkan pesan terenkripsi"
+        Map.get(msg_map, "is_encrypted") in [true, "true"] or Map.get(msg_map, :is_encrypted) in [true, "true"] -> true
+        # Base64 of {"t":1,"m": starts with eyJ0IjoxLCJtIj or {"t":0,"m": starts with eyJ0IjowLCJtIj
+        String.starts_with?(raw_body, "eyJ0Ij") -> true
+        true -> false
+      end
 
-        true ->
-          truncate(Map.get(msg_map, "body") || Map.get(msg_map, :body), 100)
+    body =
+      if is_e2ee do
+        "🔒 New Encrypted Message"
+      else
+        truncate(raw_body, 100)
       end
 
     is_android_data_only = platform in ["fcm", "android"]
@@ -194,12 +202,20 @@ defmodule Revoluchat.Workers.FcmPushWorker do
             "message_id" => to_string(Map.get(msg_map, "id") || Map.get(msg_map, :id)),
             "type" => to_string(Map.get(msg_map, "type") || Map.get(msg_map, :type)),
             "action" => "open_chat",
+            "sender_id" =>
+              to_string(
+                Map.get(msg_map, "sender_id") ||
+                  Map.get(msg_map, :sender_id) ||
+                  (user_map && (Map.get(user_map, "id") || Map.get(user_map, :id))) ||
+                  ""
+              ),
             "sender_avatar_url" => sender_avatar_url,
             "conversation_avatar_url" => conversation_avatar_url,
             "sender_name" => sender_name,
             "conversation_name" => group_name,
             "title" => title,
-            "body" => body
+            "body" => body,
+            "encrypted_body" => if(is_e2ee, do: raw_body, else: "")
           }
         }
       }

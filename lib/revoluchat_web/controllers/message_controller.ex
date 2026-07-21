@@ -156,6 +156,9 @@ defmodule RevoluchatWeb.MessageController do
     inserted_at = Map.get(m, :inserted_at) || Map.get(m, :created_at) || Map.get(m, :sent_at)
     updated_at = Map.get(m, :updated_at) || inserted_at
 
+    e2ee_recipients = get_in(m, [Access.key(:metadata, %{}), "e2ee_recipients"]) ||
+      get_in(m, [Access.key(:metadata, %{}), :e2ee_recipients]) || %{}
+
     %{
       id: m.id,
       type: m.type,
@@ -174,7 +177,8 @@ defmodule RevoluchatWeb.MessageController do
       read_at: format_dt(Map.get(m, :read_at)),
       updated_at: format_dt(updated_at),
       deleted_at: format_dt(Map.get(m, :deleted_at)),
-      inserted_at: format_dt(inserted_at)
+      inserted_at: format_dt(inserted_at),
+      e2ee_recipients: if(map_size(e2ee_recipients) > 0, do: e2ee_recipients, else: nil)
     }
   end
 

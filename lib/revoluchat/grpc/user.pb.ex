@@ -25,6 +25,7 @@ defmodule User.V1.GetUserResponse do
   field :status, 5, type: :string
   field :is_kyc, 6, type: :bool, json_name: "isKyc"
   field :avatar_url, 7, type: :string, json_name: "avatarUrl"
+  field :privacy_settings, 8, type: :bytes, json_name: "privacySettings"
 end
 
 defmodule User.V1.SearchUserByPhoneRequest do
@@ -54,6 +55,7 @@ defmodule User.V1.UserResponse do
   field :description, 5, type: :string
   field :birth_date, 6, type: :string, json_name: "birthDate"
   field :is_active, 7, type: :bool, json_name: "isActive"
+  field :privacy_settings, 8, type: :bytes, json_name: "privacySettings"
 end
 
 defmodule User.V1.AddContactRequest do

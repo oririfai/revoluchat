@@ -50,7 +50,19 @@ defmodule RevoluchatWeb.ConversationController do
         %{}
       end
 
-    formatted_conversations = Enum.map(conversations, &format_conversation(&1, users_map, user_id, app_id, attachments_map))
+    global_presence = RevoluchatWeb.Presence.list("global:users")
+    
+    # Fetch local user_chats to get last_seen_at (user_chats is the local Elixir cache with this field)
+    import Ecto.Query
+    db_users_data = 
+      if user_ids != [] do
+        Revoluchat.Repo.all(from uc in Revoluchat.Accounts.UserChat, where: uc.user_id in ^user_ids and uc.app_id == ^app_id)
+      else
+        []
+      end
+    db_users_map = Map.new(db_users_data, fn uc -> {uc.user_id, uc} end)
+
+    formatted_conversations = Enum.map(conversations, &format_conversation(&1, users_map, user_id, app_id, attachments_map, global_presence, db_users_map))
 
     filtered_conversations =
       if search_term && search_term != "" do
@@ -84,7 +96,19 @@ defmodule RevoluchatWeb.ConversationController do
       users_data = Revoluchat.Accounts.list_registered_users_by_ids(app_id, user_ids)
       users_map = Map.new(users_data, fn u -> {u.id, u} end)
 
-      json(conn, %{conversation: format_conversation(conversation, users_map, user_id, app_id)})
+      global_presence = RevoluchatWeb.Presence.list("global:users")
+      
+      # Fetch local users to get last_seen_at fallback
+      import Ecto.Query
+      db_users_data = 
+        if user_ids != [] do
+          Revoluchat.Repo.all(from u in Revoluchat.Accounts.User, where: u.uuid in ^user_ids)
+        else
+          []
+        end
+      db_users_map = Map.new(db_users_data, fn u -> {u.uuid, u} end)
+
+      json(conn, %{conversation: format_conversation(conversation, users_map, user_id, app_id, %{}, global_presence, db_users_map)})
     end
   end
 
@@ -260,7 +284,7 @@ defmodule RevoluchatWeb.ConversationController do
     |> List.first()
   end
 
-  defp format_conversation(c, users_map, current_user_id, app_id, attachments_map \\ %{}) do
+  defp format_conversation(c, users_map, current_user_id, app_id, attachments_map \\ %{}, presence_map \\ %{}, db_users_map \\ %{}) do
     # Handle missing timestamps in gRPC response
     inserted_at = Map.get(c, :inserted_at) || Map.get(c, :last_activity_at) || DateTime.utc_now()
     last_activity_at = Map.get(c, :last_activity_at) || inserted_at
@@ -293,8 +317,8 @@ defmodule RevoluchatWeb.ConversationController do
       Map.merge(base, %{
         user_a_id: c.user_a_id,
         user_b_id: c.user_b_id,
-        user_a: Map.get(users_map, c.user_a_id) |> format_user(),
-        user_b: Map.get(users_map, c.user_b_id) |> format_user()
+        user_a: Map.get(users_map, c.user_a_id) |> format_user(presence_map, db_users_map),
+        user_b: Map.get(users_map, c.user_b_id) |> format_user(presence_map, db_users_map)
       })
     end
   end
@@ -392,14 +416,24 @@ defmodule RevoluchatWeb.ConversationController do
   end
 
   defp format_user(nil), do: nil
+  defp format_user(nil, _presence_map, _db_users), do: nil
 
-  defp format_user(user) do
+  defp format_user(user, presence_map \\ %{}, db_users_map \\ %{}) do
+    user_id_str = to_string(user.id)
+    is_online = Map.has_key?(presence_map, user_id_str)
+    
+    # Get last_seen_at from local user_chats (keyed by user_id string)
+    local_user = Map.get(db_users_map, user_id_str) || Map.get(db_users_map, user.id)
+    last_seen_at = (local_user && local_user.last_seen_at) || Map.get(user, :last_seen_at)
+
     %{
       id: (user && user.id) || nil,
       name: (user && user.name) || "Unknown",
       phone: (user && user.phone),
       avatar_url: (user && user.avatar_url),
-      chat_id: (user && Map.get(user, :chat_id))
+      chat_id: (user && Map.get(user, :chat_id)),
+      is_online: is_online,
+      last_seen_at: last_seen_at
     }
   end
 end

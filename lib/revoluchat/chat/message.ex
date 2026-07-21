@@ -23,6 +23,7 @@ defmodule Revoluchat.Chat.Message do
     field(:status, :string, virtual: true, default: "sent")
     field(:metadata, :map)
     field(:group_id, :string)
+    field(:ttl_seconds, :integer, default: 0)
     field(:attachment_ids, {:array, :binary_id}, default: [])
 
     belongs_to(:conversation, Revoluchat.Chat.Conversation)
@@ -45,6 +46,7 @@ defmodule Revoluchat.Chat.Message do
       :conversation_id,
       :attachment_id,
       :attachment_ids,
+      :ttl_seconds,
       :reply_to_id
     ])
     |> validate_required([:app_id, :type, :conversation_id, :sender_id])

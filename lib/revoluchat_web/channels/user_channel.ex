@@ -23,9 +23,49 @@ defmodule RevoluchatWeb.UserChannel do
   end
 
   def handle_info(:after_join, socket) do
-    RevoluchatWeb.Presence.track(self(), "global:users", socket.assigns.user_id, %{
-      online_at: inspect(System.system_time(:second))
-    })
+    user_id = socket.assigns.user_id
+    tier = to_string(Application.get_env(:revoluchat, :tier_type))
+    
+    allow_presence = 
+      if tier == "advance" do
+        case Revoluchat.Grpc.UserClient.get_user(user_id) do
+          {:ok, user} ->
+            last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
+            last_seen != "Nobody"
+          _ -> true
+        end
+      else
+        true
+      end
+
+    if allow_presence do
+      RevoluchatWeb.Presence.track(self(), "global:users", user_id, %{
+        online_at: inspect(System.system_time(:second))
+      })
+
+      # Broadcast online status to all user's rooms
+      try do
+        conversations = Revoluchat.Chat.list_user_conversations(socket.assigns.app_id, user_id)
+        Enum.each(conversations, fn c ->
+          room_topic =
+            if c.type == "group" or not is_nil(c.group) do
+              "tenant:#{socket.assigns.app_id}:group:#{c.id}"
+            else
+              "tenant:#{socket.assigns.app_id}:room:#{c.id}"
+            end
+
+          RevoluchatWeb.Endpoint.broadcast(room_topic, "user_status_changed", %{
+            "user_id" => user_id,
+            "is_online" => true,
+            "last_seen_at" => nil
+          })
+        end)
+      rescue
+        e -> Logger.error("Failed to broadcast online status: #{inspect(e)}")
+      end
+    else
+      Logger.info("UserChannel: Presence bypassed for User #{user_id} due to privacy settings")
+    end
     {:noreply, socket}
   end
 
@@ -1002,6 +1042,46 @@ defmodule RevoluchatWeb.UserChannel do
 
   defp handle_offline_call_push(_app_id, _conversation_id, _receiver_id, _payload) do
     # Placeholder for FCM/Push logic
+    :ok
+  end
+
+  def terminate(_reason, socket) do
+    user_id = socket.assigns.user_id
+    app_id = socket.assigns.app_id
+
+    Logger.info("UserChannel: User #{user_id} disconnected")
+
+    try do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      
+      # Update last_seen_at in user_chats (local Elixir table, not the external users table)
+      import Ecto.Query
+      Revoluchat.Repo.update_all(
+        from(uc in Revoluchat.Accounts.UserChat, 
+          where: uc.user_id == ^to_string(user_id) and uc.app_id == ^app_id),
+        set: [last_seen_at: now]
+      )
+
+      # Broadcast to rooms
+      conversations = Revoluchat.Chat.list_user_conversations(app_id, user_id)
+      Enum.each(conversations, fn c ->
+        room_topic =
+          if c.type == "group" or not is_nil(c.group) do
+            "tenant:#{app_id}:group:#{c.id}"
+          else
+            "tenant:#{app_id}:room:#{c.id}"
+          end
+
+        RevoluchatWeb.Endpoint.broadcast(room_topic, "user_status_changed", %{
+          "user_id" => user_id,
+          "is_online" => false,
+          "last_seen_at" => DateTime.to_iso8601(now)
+        })
+      end)
+    rescue
+      e -> Logger.error("Failed to handle user disconnect: #{inspect(e)}")
+    end
+
     :ok
   end
 end

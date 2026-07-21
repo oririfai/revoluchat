@@ -57,18 +57,38 @@ defmodule RevoluchatWeb.ChatChannel do
   def handle_info(:after_join, socket) do
     user_id = socket.assigns.user_id
 
-    case Presence.track(socket, user_id, %{
-           online_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-           typing: false
-         }) do
-      {:ok, _} ->
-        Logger.info("ChatChannel: Presence tracked for User #{user_id}")
-        push(socket, "presence_state", Presence.list(socket))
+    tier = to_string(Application.get_env(:revoluchat, :tier_type))
+    
+    allow_presence = 
+      if tier == "advance" do
+        case Revoluchat.Grpc.UserClient.get_user(user_id) do
+          {:ok, user} ->
+            last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
+            last_seen != "Nobody"
+          _ -> true
+        end
+      else
+        true
+      end
 
-      {:error, reason} ->
-        Logger.error(
-          "ChatChannel: Failed to track presence for User #{user_id}: #{inspect(reason)}"
-        )
+    if allow_presence do
+      case Presence.track(socket, user_id, %{
+             online_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+             typing: false
+           }) do
+        {:ok, _} ->
+          Logger.info("ChatChannel: Presence tracked for User #{user_id}")
+          push(socket, "presence_state", Presence.list(socket))
+  
+        {:error, reason} ->
+          Logger.error(
+            "ChatChannel: Failed to track presence for User #{user_id}: #{inspect(reason)}"
+          )
+      end
+    else
+      Logger.info("ChatChannel: Presence bypassed for User #{user_id} due to privacy settings")
+      # Still push the list of OTHERS to this user, even if they are invisible themselves
+      push(socket, "presence_state", Presence.list(socket))
     end
 
     {:noreply, socket}
@@ -1119,11 +1139,17 @@ defmodule RevoluchatWeb.ChatChannel do
       sender_id: user_id,
       type: type,
       body: Map.get(payload, "body"),
-      is_encrypted: Map.get(payload, "is_encrypted", false),
+      is_encrypted: Map.get(payload, "is_encrypted", false) || Map.has_key?(payload, "e2ee_recipients"),
       attachment_id: attachment_id,
       attachment_ids: attachment_ids,
       reply_to_id: Map.get(payload, "reply_to_id"),
-      client_id: Map.get(payload, "client_id")
+      client_id: Map.get(payload, "client_id"),
+      # Store per-recipient E2EE ciphertexts in metadata so each recipient can retrieve their own
+      metadata: case Map.get(payload, "e2ee_recipients") do
+        recipients when is_map(recipients) and map_size(recipients) > 0 ->
+          %{"e2ee_recipients" => recipients, "e2ee_type" => Map.get(payload, "e2ee_type", 5)}
+        _ -> nil
+      end
     }
 
     Logger.debug("ChatChannel: Processing new message with attrs: #{inspect(attrs)}")
@@ -1238,7 +1264,12 @@ defmodule RevoluchatWeb.ChatChannel do
             # Don't send push to the sender
             if to_string(member.user_id) != to_string(message.sender_id) do
               if not is_member_online.(member.user_id) do
-                %{
+                # Retrieve recipient-specific E2EE ciphertext from message metadata
+                e2ee_recipients = get_in(message, [Access.key(:metadata, %{}), "e2ee_recipients"]) || %{}
+                member_id_str = to_string(member.user_id)
+                recipient_cipher = Map.get(e2ee_recipients, member_id_str)
+
+                base_job = %{
                   "app_id" => app_id,
                   "user_id" => member.user_id,
                   "conversation_id" => formatted_group_id,
@@ -1246,6 +1277,15 @@ defmodule RevoluchatWeb.ChatChannel do
                   "conversation_name" => group.name,
                   "sender_avatar_url" => resolved_avatar
                 }
+
+                # Include recipient's specific ciphertext so FCM worker can deliver encrypted_body
+                job_args = if recipient_cipher do
+                  Map.put(base_job, "encrypted_body", recipient_cipher)
+                else
+                  base_job
+                end
+
+                job_args
                 |> Revoluchat.Workers.FcmPushWorker.new()
                 |> Oban.insert()
               end
@@ -1307,6 +1347,9 @@ defmodule RevoluchatWeb.ChatChannel do
           []
       end
 
+    e2ee_recipients = get_in(message, [Access.key(:metadata, %{}), "e2ee_recipients"]) ||
+      get_in(message, [Access.key(:metadata, %{}), :e2ee_recipients]) || %{}
+
     %{
       id: message.id,
       type: message.type,
@@ -1323,7 +1366,9 @@ defmodule RevoluchatWeb.ChatChannel do
       delivered_at: format_dt(message.delivered_at),
       read_at: format_dt(message.read_at),
       deleted_at: format_dt(message.deleted_at),
-      inserted_at: format_dt(message.inserted_at)
+      inserted_at: format_dt(message.inserted_at),
+      # Per-recipient E2EE ciphertexts — each client picks their own entry
+      e2ee_recipients: if(map_size(e2ee_recipients) > 0, do: e2ee_recipients, else: nil)
     }
   end
 

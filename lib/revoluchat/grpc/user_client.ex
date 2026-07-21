@@ -127,6 +127,17 @@ defmodule Revoluchat.Grpc.UserClient do
   end
 
   defp parse_response(response) do
+    privacy_settings = 
+      case response.privacy_settings do
+        nil -> %{}
+        "" -> %{}
+        bytes -> 
+          case Jason.decode(bytes) do
+            {:ok, decoded} -> decoded
+            _ -> %{}
+          end
+      end
+
     %{
       id: response.id,
       uuid: response.uuid,
@@ -134,7 +145,8 @@ defmodule Revoluchat.Grpc.UserClient do
       phone: response.phone,
       status: response.status,
       is_kyc: response.is_kyc,
-      avatar_url: response.avatar_url
+      avatar_url: response.avatar_url,
+      privacy_settings: privacy_settings
     }
   end
 

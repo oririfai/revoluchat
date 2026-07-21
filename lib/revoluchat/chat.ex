@@ -40,6 +40,32 @@ defmodule Revoluchat.Chat do
   def soft_delete_message(app_id, message_id, user_id), do: adapter().soft_delete_message(app_id, message_id, user_id)
   def soft_delete_messages(app_id, message_ids, user_id), do: adapter().soft_delete_messages(app_id, message_ids, user_id)
 
+  @doc """
+  Fungsi fan-out untuk fitur Siaran (Broadcast). 
+  Akan mengirim pesan satu per satu ke setiap recipient_ids dalam 1-on-1 private chat, 
+  menggunakan proses asinkron untuk efisiensi.
+  """
+  def broadcast_message(app_id, sender_id, body, recipient_ids) when is_list(recipient_ids) do
+    Task.start(fn ->
+      Enum.each(recipient_ids, fn receiver_id ->
+        # Pastikan conversation private antara sender dan receiver ada
+        case get_or_create_conversation(app_id, sender_id, receiver_id) do
+          {:ok, conv} ->
+            insert_message(%{
+              app_id: app_id,
+              conversation_id: conv.id,
+              sender_id: sender_id,
+              type: "text",
+              body: body,
+              metadata: %{"is_broadcast" => true}
+            })
+          _ -> :ok # Abaikan jika gagal (e.g. diblokir)
+        end
+      end)
+    end)
+    {:ok, %{status: "broadcast_queued", total_recipients: length(recipient_ids)}}
+  end
+
   # ─── Attachments ──────────────────────────────────────────────────────────────
 
   def get_attachment!(id), do: Revoluchat.Chat.Adapters.Postgres.get_attachment!(id)
