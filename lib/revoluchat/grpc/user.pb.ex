@@ -3,7 +3,7 @@ defmodule User.V1.GetUserRequest do
 
   use Protobuf,
     full_name: "user.v1.GetUserRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -15,7 +15,7 @@ defmodule User.V1.GetUserResponse do
 
   use Protobuf,
     full_name: "user.v1.GetUserResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -26,6 +26,7 @@ defmodule User.V1.GetUserResponse do
   field :is_kyc, 6, type: :bool, json_name: "isKyc"
   field :avatar_url, 7, type: :string, json_name: "avatarUrl"
   field :privacy_settings, 8, type: :bytes, json_name: "privacySettings"
+  field :last_seen_at, 9, type: :string, json_name: "lastSeenAt"
 end
 
 defmodule User.V1.SearchUserByPhoneRequest do
@@ -33,7 +34,7 @@ defmodule User.V1.SearchUserByPhoneRequest do
 
   use Protobuf,
     full_name: "user.v1.SearchUserByPhoneRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -45,7 +46,7 @@ defmodule User.V1.UserResponse do
 
   use Protobuf,
     full_name: "user.v1.UserResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -56,6 +57,7 @@ defmodule User.V1.UserResponse do
   field :birth_date, 6, type: :string, json_name: "birthDate"
   field :is_active, 7, type: :bool, json_name: "isActive"
   field :privacy_settings, 8, type: :bytes, json_name: "privacySettings"
+  field :last_seen_at, 9, type: :string, json_name: "lastSeenAt"
 end
 
 defmodule User.V1.AddContactRequest do
@@ -63,7 +65,7 @@ defmodule User.V1.AddContactRequest do
 
   use Protobuf,
     full_name: "user.v1.AddContactRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -76,7 +78,7 @@ defmodule User.V1.ListContactsRequest do
 
   use Protobuf,
     full_name: "user.v1.ListContactsRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -88,7 +90,7 @@ defmodule User.V1.ListContactsResponse do
 
   use Protobuf,
     full_name: "user.v1.ListContactsResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :contacts, 1, repeated: true, type: User.V1.UserResponse
@@ -99,7 +101,7 @@ defmodule User.V1.RemoveContactRequest do
 
   use Protobuf,
     full_name: "user.v1.RemoveContactRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -112,7 +114,7 @@ defmodule User.V1.ActionResponse do
 
   use Protobuf,
     full_name: "user.v1.ActionResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :success, 1, type: :bool
@@ -122,7 +124,7 @@ end
 defmodule User.V1.UserService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "user.v1.UserService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "user.v1.UserService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :GetUser, User.V1.GetUserRequest, User.V1.GetUserResponse
 

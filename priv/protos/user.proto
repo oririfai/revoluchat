@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package user.v1;
 
+option go_package = "github.com/oririfai/revoluchat-go-sdk/proto/user_v1";
+
 service UserService {
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
   
@@ -25,6 +27,8 @@ message GetUserResponse {
   string status = 5;
   bool is_kyc = 6;
   string avatar_url = 7;
+  bytes privacy_settings = 8;
+  string last_seen_at = 9;
 }
 
 message SearchUserByPhoneRequest {
@@ -40,6 +44,8 @@ message UserResponse {
   string description = 5;
   string birth_date = 6;
   bool is_active = 7;
+  bytes privacy_settings = 8;
+  string last_seen_at = 9;
 }
 
 message AddContactRequest {
