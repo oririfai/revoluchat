@@ -207,12 +207,28 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
       if message.sender_id == user_id do
         {:error, :cannot_mark_own_message}
       else
-        # When reading, ensure it's also marked as delivered
+        reader_user = Revoluchat.Accounts.get_registered_user(app_id, user_id)
+        sender_user = Revoluchat.Accounts.get_registered_user(app_id, message.sender_id)
+
+        reader_privacy = (reader_user && (Map.get(reader_user, :privacy_settings) || Map.get(reader_user, "privacy_settings"))) || %{}
+        sender_privacy = (sender_user && (Map.get(sender_user, :privacy_settings) || Map.get(sender_user, "privacy_settings"))) || %{}
+
+        reader_off = (Map.get(reader_privacy, "read_receipts") || Map.get(reader_privacy, :read_receipts)) in [false, "false", "Tidak", "tidak", "off", "nobody", "Nobody"]
+        sender_off = (Map.get(sender_privacy, "read_receipts") || Map.get(sender_privacy, :read_receipts)) in [false, "false", "Tidak", "tidak", "off", "nobody", "Nobody"]
+
         now = DateTime.utc_now()
-        updates = [read_at: now]
-        updates = if is_nil(message.delivered_at), do: [{:delivered_at, now} | updates], else: updates
-        
-        message |> Ecto.Changeset.change(updates) |> Repo.update()
+
+        if reader_off or sender_off do
+          if is_nil(message.delivered_at) do
+            message |> Ecto.Changeset.change(delivered_at: now) |> Repo.update()
+          else
+            {:ok, message}
+          end
+        else
+          updates = [read_at: now]
+          updates = if is_nil(message.delivered_at), do: [{:delivered_at, now} | updates], else: updates
+          message |> Ecto.Changeset.change(updates) |> Repo.update()
+        end
       end
     end
   end
@@ -248,7 +264,7 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
       where: m.id in ^message_ids,
       where: m.sender_id == ^user_id
     )
-    
+
     Repo.update_all(query, set: [deleted_at: now, updated_at: now])
     |> case do
       {count, _} -> {:ok, count}
@@ -354,13 +370,13 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
 
   def get_approved_attachment_for_user(app_id, attachment_id, user_id) do
     case Repo.get_by(Attachment, id: attachment_id, app_id: app_id) do
-      nil -> 
+      nil ->
         Logger.debug("AttachmentAdapter: Attachment #{attachment_id} not found for app #{app_id}")
         {:error, :not_found}
       att ->
         is_uploader = to_string(att.uploader_id) == to_string(user_id)
         is_approved = att.status == "approved"
-        
+
         Logger.debug("AttachmentAdapter: id=#{attachment_id} status=#{att.status} is_uploader=#{is_uploader} user_id=#{user_id} uploader_id=#{att.uploader_id}")
 
         cond do
@@ -368,8 +384,8 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
             if is_uploader do
               {:ok, att}
             else
-              # Fallback for Group Chats: 
-              # Since group_id column might not exist in Normal Tier Postgres, 
+              # Fallback for Group Chats:
+              # Since group_id column might not exist in Normal Tier Postgres,
               # we trust the access if the attachment is approved and the user is authenticated.
               # In a production Advance Tier, this should call gRPC to verify membership.
               # Group Chat/Conversation Participation check
@@ -377,12 +393,12 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
                 left_join: c in Conversation, on: m.conversation_id == c.id,
                 where: m.attachment_id == ^attachment_id or ^attachment_id in m.attachment_ids,
                 where: (not is_nil(c.id) and (
-                  fragment("CAST(? AS TEXT)", c.user_a_id) == ^to_string(user_id) or 
+                  fragment("CAST(? AS TEXT)", c.user_a_id) == ^to_string(user_id) or
                   fragment("CAST(? AS TEXT)", c.user_b_id) == ^to_string(user_id)
                 ))
               ) |> Repo.exists?()
-              
-              # If not found in private conversations, and since it's approved, 
+
+              # If not found in private conversations, and since it's approved,
               # we allow access (covering group chat fallback where we trust status)
               if is_participant or is_approved do
                 Logger.debug("AttachmentAdapter: Granting access to attachment #{attachment_id} for user #{user_id}. Participant: #{is_participant}, Approved: #{is_approved}")
@@ -456,7 +472,7 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
   end
 
   # --- GROUPS (ADVANCE TIER ONLY) ---
-  
+
   def create_group(_app_id, _params), do: {:error, :not_supported_in_normal_tier}
   def get_group(_app_id, _group_id), do: {:error, :not_supported_in_normal_tier}
   def add_members(_app_id, _group_id, _user_ids, _role), do: {:error, :not_supported_in_normal_tier}

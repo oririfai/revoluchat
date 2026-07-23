@@ -74,7 +74,7 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
 
   def insert_message(attrs) do
     case ChatClient.insert_message(attrs) do
-      {:ok, msg, _grpc_atts} -> 
+      {:ok, msg, _grpc_atts} ->
         normalized_msg = normalize_message(msg)
         # Return the already normalized attachments from inside the message
         {:ok, normalized_msg, normalized_msg.attachments}
@@ -132,7 +132,7 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
   end
 
   # ─── Attachments ──────────────────────────────────────────────────────────────
-  
+
   # For Advance Tier, Go handles attachment persistence, but Elixir still provides URLs
   def get_attachment!(id) do
     ChatClient.get_attachment(id)
@@ -224,7 +224,7 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
 
   defp normalize_conversation(nil), do: nil
   defp normalize_conversation(conv) do
-    %{conv | 
+    %{conv |
       last_activity_at: parse_dt(conv.last_activity_at),
       last_message: normalize_message(conv.last_message),
       archived_at: conv.archived_at,
@@ -264,7 +264,7 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
     %{g |
       inserted_at: parse_dt(g.inserted_at),
       updated_at: parse_dt(g.updated_at),
-      members: Enum.map(g.members || [], fn m -> 
+      members: Enum.map(g.members || [], fn m ->
         %{m | joined_at: parse_dt(m.joined_at)}
       end)
     }
@@ -272,7 +272,7 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
 
   def normalize_attachment(nil), do: nil
   def normalize_attachment(att) do
-    metadata = 
+    metadata =
       case Jason.decode(att.metadata || "{}") do
         {:ok, map} -> map
         _ -> %{}

@@ -58,13 +58,13 @@ defmodule RevoluchatWeb.ChatChannel do
     user_id = socket.assigns.user_id
 
     tier = to_string(Application.get_env(:revoluchat, :tier_type))
-    
-    allow_presence = 
+
+    allow_presence =
       if tier == "advance" do
         case Revoluchat.Grpc.UserClient.get_user(user_id) do
           {:ok, user} ->
             last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
-            last_seen != "Nobody"
+            last_seen not in ["Tidak ada", "Nobody", "nobody"]
           _ -> true
         end
       else
@@ -79,7 +79,7 @@ defmodule RevoluchatWeb.ChatChannel do
         {:ok, _} ->
           Logger.info("ChatChannel: Presence tracked for User #{user_id}")
           push(socket, "presence_state", Presence.list(socket))
-  
+
         {:error, reason} ->
           Logger.error(
             "ChatChannel: Failed to track presence for User #{user_id}: #{inspect(reason)}"
@@ -134,26 +134,18 @@ defmodule RevoluchatWeb.ChatChannel do
     if_authorized(socket, fn ->
       user_id = socket.assigns.user_id
 
-      # Only broadcast if not already marked as typing in this session
-      # We use Presence to track the state
-      already_typing =
-        Presence.list(socket)
-        |> Map.get(to_string(user_id))
-        |> case do
-          %{metas: metas} -> Enum.any?(metas, &Map.get(&1, :typing))
-          _ -> false
-        end
-
-      if not already_typing do
+      try do
         Presence.update(socket, user_id, fn meta ->
           Map.put(meta, :typing, true)
         end)
-
-        broadcast_from!(socket, "user_typing", %{
-          user_id: user_id,
-          typing: true
-        })
+      rescue
+        _ -> :ok
       end
+
+      broadcast_from!(socket, "user_typing", %{
+        user_id: user_id,
+        typing: true
+      })
 
       {:noreply, socket}
     end)
@@ -164,24 +156,18 @@ defmodule RevoluchatWeb.ChatChannel do
     if_authorized(socket, fn ->
       user_id = socket.assigns.user_id
 
-      is_typing =
-        Presence.list(socket)
-        |> Map.get(to_string(user_id))
-        |> case do
-          %{metas: metas} -> Enum.any?(metas, &Map.get(&1, :typing))
-          _ -> false
-        end
-
-      if is_typing do
+      try do
         Presence.update(socket, user_id, fn meta ->
           Map.put(meta, :typing, false)
         end)
-
-        broadcast_from!(socket, "user_typing", %{
-          user_id: user_id,
-          typing: false
-        })
+      rescue
+        _ -> :ok
       end
+
+      broadcast_from!(socket, "user_typing", %{
+        user_id: user_id,
+        typing: false
+      })
 
       {:noreply, socket}
     end)
@@ -195,12 +181,32 @@ defmodule RevoluchatWeb.ChatChannel do
 
       case Chat.mark_read(app_id, message_id, user_id) do
         {:ok, message} ->
-          broadcast!(socket, "message_read", %{
-            message_id: message_id,
-            read_by: user_id,
-            read_at: format_dt(message.read_at),
-            status: get_status(message)
-          })
+          reader_user = Revoluchat.Accounts.get_registered_user(app_id, user_id)
+          sender_user = Revoluchat.Accounts.get_registered_user(app_id, message.sender_id)
+
+          reader_privacy = (reader_user && (Map.get(reader_user, :privacy_settings) || Map.get(reader_user, "privacy_settings"))) || %{}
+          sender_privacy = (sender_user && (Map.get(sender_user, :privacy_settings) || Map.get(sender_user, "privacy_settings"))) || %{}
+
+          reader_off = (Map.get(reader_privacy, "read_receipts") || Map.get(reader_privacy, :read_receipts)) in [false, "false", "Tidak", "tidak", "off", "nobody", "Nobody"]
+          sender_off = (Map.get(sender_privacy, "read_receipts") || Map.get(sender_privacy, :read_receipts)) in [false, "false", "Tidak", "tidak", "off", "nobody", "Nobody"]
+
+          if not is_nil(message.read_at) and not (reader_off or sender_off) do
+            broadcast!(socket, "message_read", %{
+              message_id: message_id,
+              read_by: user_id,
+              read_at: format_dt(message.read_at),
+              status: get_status(message)
+            })
+          else
+            if not is_nil(message.delivered_at) do
+              broadcast!(socket, "message_delivered", %{
+                message_id: message_id,
+                delivered_to: user_id,
+                delivered_at: format_dt(message.delivered_at),
+                status: "delivered"
+              })
+            end
+          end
 
           # Broadcast conversation_updated to participant user channels so their main chat lists refresh
           conversation_id = socket.assigns[:conversation_id]
@@ -268,12 +274,21 @@ defmodule RevoluchatWeb.ChatChannel do
 
       case Chat.mark_delivered(app_id, message_id, user_id) do
         {:ok, message} ->
-          broadcast!(socket, "message_delivered", %{
+          conv_or_group_id = message.conversation_id || message.group_id || socket.assigns[:conversation_id] || socket.assigns[:group_id]
+          payload = %{
             message_id: message_id,
+            conversation_id: conv_or_group_id,
+            room_id: conv_or_group_id,
             delivered_to: user_id,
             delivered_at: format_dt(message.delivered_at),
             status: get_status(message)
-          })
+          }
+
+          broadcast!(socket, "message_delivered", payload)
+
+          if message.sender_id do
+            RevoluchatWeb.Endpoint.broadcast("user:#{message.sender_id}", "message_delivered", payload)
+          end
 
           {:reply, :ok, socket}
 
@@ -367,7 +382,7 @@ defmodule RevoluchatWeb.ChatChannel do
       # Enrichment logic similar to finish_join
       sender_ids = Enum.map(messages, & &1.sender_id) |> Enum.uniq()
       users_data = Revoluchat.Accounts.list_registered_users_by_ids(app_id, sender_ids)
-      users_map = Map.new(users_data, fn u -> {u.id, u} end)
+      users_map = Revoluchat.Accounts.build_users_map(users_data)
 
       all_attachment_ids =
         messages
@@ -1070,7 +1085,7 @@ defmodule RevoluchatWeb.ChatChannel do
   defp finish_join(messages, app_id, target_id, user_id, socket, extra_meta) do
     sender_ids = Enum.map(messages, & &1.sender_id) |> Enum.uniq()
     users_data = Revoluchat.Accounts.list_registered_users_by_ids(app_id, sender_ids)
-    users_map = Map.new(users_data, fn u -> {u.id, u} end)
+    users_map = Revoluchat.Accounts.build_users_map(users_data)
 
     all_attachment_ids =
       messages
@@ -1160,8 +1175,17 @@ defmodule RevoluchatWeb.ChatChannel do
       {:ok, message, attachments} ->
         Logger.info("ChatChannel: Successfully inserted message #{message.id}")
         Logger.debug("ChatChannel: Message inserted. Attachments count: #{length(attachments)}")
+
         # Fetch sender info for broadcast from local DB (cache)
         user = Revoluchat.Accounts.get_registered_user(app_id, message.sender_id)
+        current_user_id = socket && socket.assigns[:user_id]
+        is_self = to_string(message.sender_id) == to_string(current_user_id)
+        target_privacy = (user && (Map.get(user, :privacy_settings) || Map.get(user, "privacy_settings"))) || %{}
+        target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
+        hide_photo = not is_self and target_photo in ["Tidak ada", "Nobody", "nobody"]
+
+        raw_avatar = if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
+        avatar_url = if hide_photo, do: nil, else: raw_avatar
 
         formatted_message =
           message
@@ -1170,7 +1194,7 @@ defmodule RevoluchatWeb.ChatChannel do
             id: if(user, do: user.user_id, else: message.sender_id),
             name: (user && user.name) || "Unknown",
             phone: if(user, do: user.phone, else: nil),
-            avatar_url: if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
+            avatar_url: avatar_url
           })
 
         # Broadcast ke semua (termasuk sender untuk konfirmasi visual real-time)
@@ -1198,7 +1222,7 @@ defmodule RevoluchatWeb.ChatChannel do
             update_payload
           )
 
-          # FCM Push for Conversations
+          # FCM Push for Conversations (only if receiver is offline)
           receiver_id =
             if message.sender_id == conversation.user_a_id,
               do: conversation.user_b_id,
@@ -1310,7 +1334,26 @@ defmodule RevoluchatWeb.ChatChannel do
   end
 
   defp format_message_with_user(message, users_map, attachments, socket) do
-    user = Map.get(users_map, message.sender_id)
+    sender_id_str = to_string(message.sender_id)
+    user = Map.get(users_map, sender_id_str) || Map.get(users_map, message.sender_id)
+
+    current_user_id = socket && socket.assigns[:user_id]
+    current_user = Map.get(users_map, to_string(current_user_id)) || Map.get(users_map, current_user_id)
+
+    is_self = sender_id_str == to_string(current_user_id)
+    target_privacy = (user && (Map.get(user, :privacy_settings) || Map.get(user, "privacy_settings"))) || %{}
+    current_privacy = (current_user && (Map.get(current_user, :privacy_settings) || Map.get(current_user, "privacy_settings"))) || %{}
+
+    target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
+    current_photo = Map.get(current_privacy, "profile_photo") || Map.get(current_privacy, :profile_photo)
+
+    target_photo_disabled = target_photo in ["Tidak ada", "Nobody", "nobody"]
+    current_photo_disabled = current_photo in ["Tidak ada", "Nobody", "nobody"]
+
+    hide_photo = not is_self and (target_photo_disabled or current_photo_disabled)
+
+    raw_avatar = if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
+    avatar_url = if hide_photo, do: nil, else: raw_avatar
 
     message
     |> format_message(attachments, socket)
@@ -1318,7 +1361,7 @@ defmodule RevoluchatWeb.ChatChannel do
       id: if(user, do: user.id, else: message.sender_id),
       name: if(user, do: user.name, else: "Unknown"),
       phone: if(user, do: user.phone, else: nil),
-      avatar_url: if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
+      avatar_url: avatar_url
     })
   end
 

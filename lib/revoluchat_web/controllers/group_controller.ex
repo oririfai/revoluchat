@@ -129,7 +129,7 @@ defmodule RevoluchatWeb.GroupController do
     # Fetch member details for better FE display
     user_ids = Enum.map(group.members, & &1.user_id)
     users_data = Accounts.list_registered_users_by_ids(app_id, user_ids)
-    users_map = Map.new(users_data, fn u -> {u.id, u} end)
+    users_map = Accounts.build_users_map(users_data)
 
     %{
       id: "group_#{group.id}",
@@ -143,6 +143,21 @@ defmodule RevoluchatWeb.GroupController do
       unread_count: group.unread_count,
       members: Enum.map(group.members || [], fn m ->
         user = Map.get(users_map, m.user_id)
+        is_self = to_string(m.user_id) == to_string(current_user_id)
+
+        target_privacy = (user && (Map.get(user, :privacy_settings) || Map.get(user, "privacy_settings"))) || %{}
+        current_user = Map.get(users_map, to_string(current_user_id)) || Map.get(users_map, current_user_id)
+        current_privacy = (current_user && (Map.get(current_user, :privacy_settings) || Map.get(current_user, "privacy_settings"))) || %{}
+
+        target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
+        current_photo = Map.get(current_privacy, "profile_photo") || Map.get(current_privacy, :profile_photo)
+
+        target_photo_disabled = target_photo in ["Tidak ada", "Nobody", "nobody"]
+        current_photo_disabled = current_photo in ["Tidak ada", "Nobody", "nobody"]
+
+        hide_photo = not is_self and (target_photo_disabled or current_photo_disabled)
+        member_avatar = if hide_photo, do: nil, else: (user && user.avatar_url)
+
         %{
           user_id: m.user_id,
           role: m.role,
@@ -152,7 +167,7 @@ defmodule RevoluchatWeb.GroupController do
           user: %{
             id: (user && user.id) || m.user_id,
             name: (user && user.name) || "Unknown",
-            avatar_url: (user && user.avatar_url)
+            avatar_url: member_avatar
           }
         }
       end),

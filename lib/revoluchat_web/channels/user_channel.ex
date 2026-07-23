@@ -9,7 +9,7 @@ defmodule RevoluchatWeb.UserChannel do
 
     if user_id == authorized_user_id do
       Logger.info("UserChannel: User #{user_id} joined their private channel")
-      
+
       send(self(), :after_join)
 
       {:ok, socket}
@@ -25,13 +25,13 @@ defmodule RevoluchatWeb.UserChannel do
   def handle_info(:after_join, socket) do
     user_id = socket.assigns.user_id
     tier = to_string(Application.get_env(:revoluchat, :tier_type))
-    
-    allow_presence = 
+
+    allow_presence =
       if tier == "advance" do
         case Revoluchat.Grpc.UserClient.get_user(user_id) do
           {:ok, user} ->
             last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
-            last_seen != "Nobody"
+            last_seen not in ["Tidak ada", "Nobody", "nobody"]
           _ -> true
         end
       else
@@ -55,6 +55,7 @@ defmodule RevoluchatWeb.UserChannel do
             end
 
           RevoluchatWeb.Endpoint.broadcast(room_topic, "user_status_changed", %{
+            "room_id" => c.id,
             "user_id" => user_id,
             "is_online" => true,
             "last_seen_at" => nil
@@ -67,6 +68,124 @@ defmodule RevoluchatWeb.UserChannel do
       Logger.info("UserChannel: Presence bypassed for User #{user_id} due to privacy settings")
     end
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("update_privacy", params, socket) do
+    user_id = socket.assigns.user_id
+    tier = to_string(Application.get_env(:revoluchat, :tier_type))
+
+    last_seen_param = Map.get(params || %{}, "last_seen")
+
+    allow_presence =
+      cond do
+        !is_nil(last_seen_param) ->
+          last_seen_param not in ["Tidak ada", "Nobody", "nobody"]
+
+        tier == "advance" ->
+          case Revoluchat.Grpc.UserClient.get_user(user_id) do
+            {:ok, user} ->
+              last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
+              last_seen not in ["Tidak ada", "Nobody", "nobody"]
+
+            _ ->
+              true
+          end
+
+        true ->
+          true
+      end
+
+    if allow_presence do
+      RevoluchatWeb.Presence.track(self(), "global:users", user_id, %{
+        online_at: inspect(System.system_time(:second))
+      })
+
+      try do
+        conversations = Revoluchat.Chat.list_user_conversations(socket.assigns.app_id, user_id)
+
+        Enum.each(conversations, fn c ->
+          room_topic =
+            if c.type == "group" or not is_nil(c.group) do
+              "tenant:#{socket.assigns.app_id}:group:#{c.id}"
+            else
+              "tenant:#{socket.assigns.app_id}:room:#{c.id}"
+            end
+
+          RevoluchatWeb.Endpoint.broadcast(room_topic, "user_status_changed", %{
+            "room_id" => c.id,
+            "user_id" => user_id,
+            "is_online" => true,
+            "last_seen_at" => nil
+          })
+        end)
+      rescue
+        e -> Logger.error("Failed to broadcast online status: #{inspect(e)}")
+      end
+    else
+      RevoluchatWeb.Presence.untrack(self(), "global:users", user_id)
+
+      try do
+        conversations = Revoluchat.Chat.list_user_conversations(socket.assigns.app_id, user_id)
+
+        Enum.each(conversations, fn c ->
+          room_topic =
+            if c.type == "group" or not is_nil(c.group) do
+              "tenant:#{socket.assigns.app_id}:group:#{c.id}"
+            else
+              "tenant:#{socket.assigns.app_id}:room:#{c.id}"
+            end
+
+          RevoluchatWeb.Endpoint.broadcast(room_topic, "user_status_changed", %{
+            "room_id" => c.id,
+            "user_id" => user_id,
+            "is_online" => false,
+            "last_seen_at" => nil
+          })
+        end)
+      rescue
+        e -> Logger.error("Failed to broadcast offline status: #{inspect(e)}")
+      end
+    end
+
+    {:reply, :ok, socket}
+  end
+
+  @impl true
+  def handle_in("mark_delivered", %{"message_id" => message_id} = params, socket) do
+    user_id = socket.assigns.user_id
+    app_id = socket.assigns.app_id
+
+    case Revoluchat.Chat.mark_delivered(app_id, message_id, user_id) do
+      {:ok, message} ->
+        room_id = params["room_id"] || message.conversation_id
+        room_topic =
+          if String.starts_with?(to_string(room_id), "group_") do
+            "tenant:#{app_id}:group:#{clean_id(room_id)}"
+          else
+            "tenant:#{app_id}:room:#{clean_id(room_id)}"
+          end
+
+        conv_id = room_id || message.conversation_id || message.group_id
+        payload = %{
+          "message_id" => message_id,
+          "conversation_id" => conv_id,
+          "room_id" => conv_id,
+          "delivered_to" => user_id,
+          "delivered_at" => format_dt(message.delivered_at),
+          "status" => "delivered"
+        }
+
+        RevoluchatWeb.Endpoint.broadcast(room_topic, "message_delivered", payload)
+        if message.sender_id do
+          RevoluchatWeb.Endpoint.broadcast("user:#{message.sender_id}", "message_delivered", payload)
+        end
+
+        {:reply, :ok, socket}
+
+      {:error, _} ->
+        {:reply, {:error, %{reason: "not_found"}}, socket}
+    end
   end
 
   # FAST PATH SIGNALING: Accept/Reject via User Channel (Bypassing Room Join)
@@ -1053,14 +1172,29 @@ defmodule RevoluchatWeb.UserChannel do
 
     try do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
-      
+
       # Update last_seen_at in user_chats (local Elixir table, not the external users table)
       import Ecto.Query
       Revoluchat.Repo.update_all(
-        from(uc in Revoluchat.Accounts.UserChat, 
+        from(uc in Revoluchat.Accounts.UserChat,
           where: uc.user_id == ^to_string(user_id) and uc.app_id == ^app_id),
         set: [last_seen_at: now]
       )
+
+      tier = to_string(Application.get_env(:revoluchat, :tier_type))
+      allow_last_seen =
+        if tier == "advance" do
+          case Revoluchat.Grpc.UserClient.get_user(user_id) do
+            {:ok, user} ->
+              last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
+              last_seen not in ["Tidak ada", "Nobody", "nobody"]
+            _ -> true
+          end
+        else
+          true
+        end
+
+      last_seen_iso = if allow_last_seen, do: DateTime.to_iso8601(now), else: nil
 
       # Broadcast to rooms
       conversations = Revoluchat.Chat.list_user_conversations(app_id, user_id)
@@ -1073,9 +1207,10 @@ defmodule RevoluchatWeb.UserChannel do
           end
 
         RevoluchatWeb.Endpoint.broadcast(room_topic, "user_status_changed", %{
+          "room_id" => c.id,
           "user_id" => user_id,
           "is_online" => false,
-          "last_seen_at" => DateTime.to_iso8601(now)
+          "last_seen_at" => last_seen_iso
         })
       end)
     rescue
@@ -1084,4 +1219,14 @@ defmodule RevoluchatWeb.UserChannel do
 
     :ok
   end
+
+  defp clean_id(id) when is_binary(id) do
+    id
+    |> String.replace("group_", "")
+    |> String.replace("room_", "")
+  end
+  defp clean_id(id), do: id
+
+  defp format_dt(nil), do: nil
+  defp format_dt(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
 end

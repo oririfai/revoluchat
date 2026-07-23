@@ -41,8 +41,8 @@ defmodule Revoluchat.Chat do
   def soft_delete_messages(app_id, message_ids, user_id), do: adapter().soft_delete_messages(app_id, message_ids, user_id)
 
   @doc """
-  Fungsi fan-out untuk fitur Siaran (Broadcast). 
-  Akan mengirim pesan satu per satu ke setiap recipient_ids dalam 1-on-1 private chat, 
+  Fungsi fan-out untuk fitur Siaran (Broadcast).
+  Akan mengirim pesan satu per satu ke setiap recipient_ids dalam 1-on-1 private chat,
   menggunakan proses asinkron untuk efisiensi.
   """
   def broadcast_message(app_id, sender_id, body, recipient_ids) when is_list(recipient_ids) do
@@ -70,7 +70,7 @@ defmodule Revoluchat.Chat do
 
   def get_attachment!(id), do: Revoluchat.Chat.Adapters.Postgres.get_attachment!(id)
   def create_attachment_init(attrs), do: Revoluchat.Chat.Adapters.Postgres.create_attachment_init(attrs)
-  
+
   def confirm_attachment(app_id, id, uploader_id) do
     # Always confirm in local Elixir DB first
     case Revoluchat.Chat.Adapters.Postgres.confirm_attachment(app_id, id, uploader_id) do
@@ -96,7 +96,7 @@ defmodule Revoluchat.Chat do
   end
 
   def get_attachment_download_url(app_id, attachment_id, user_id), do: Revoluchat.Chat.Adapters.Postgres.get_attachment_download_url(app_id, attachment_id, user_id)
-  
+
   def list_attachments_by_ids(app_id, ids) do
     if Application.get_env(:revoluchat, :tier_type) == "advance" do
       # In Advance Tier, get from Go and normalize (decode metadata string)

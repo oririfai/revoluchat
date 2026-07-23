@@ -14,6 +14,7 @@ defmodule Revoluchat.Accounts.UserChat do
     field :description, :string
     field :birth_date, :date
     field :last_seen_at, :utc_datetime
+    field :privacy_settings, :map, virtual: true
 
     timestamps()
   end

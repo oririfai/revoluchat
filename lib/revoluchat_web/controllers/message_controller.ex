@@ -190,10 +190,10 @@ defmodule RevoluchatWeb.MessageController do
     base_url = RevoluchatWeb.Endpoint.url()
     _token = conn.assigns.token
     _api_key = conn.assigns.api_key
-    
+
     url = "#{base_url}/api/a/v1/attachments/#{att.id}/show"
 
-    type = 
+    type =
       cond do
         String.starts_with?(att.mime_type || "", "image/") -> "image"
         String.starts_with?(att.mime_type || "", "video/") -> "video"

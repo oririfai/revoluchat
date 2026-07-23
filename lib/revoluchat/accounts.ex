@@ -393,34 +393,33 @@ defmodule Revoluchat.Accounts do
   Ambil data user dari DB lokal (cache) atau remote gRPC jika advance tier.
   """
   def get_registered_user(app_id, user_id) do
-    if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
-      case UserClient.get_user(user_id) do
-        {:ok, remote_user} ->
-          target_id = remote_user.uuid || remote_user.id
+    clean_uid = user_id |> to_string() |> String.replace(~r/^(user_|room_|group_)/, "")
 
-          %Revoluchat.Accounts.UserChat{
-            user_id: target_id,
-            chat_id: target_id,
-            name: remote_user.name,
-            phone: remote_user.phone,
-            avatar_url: remote_user.avatar_url
-          }
+    case UserClient.get_user(clean_uid) do
+      {:ok, remote_user} ->
+        target_id = remote_user.uuid || remote_user.id
 
-        _ ->
-          nil
-      end
-    else
-      case Repo.get_by(UserChat, app_id: app_id, user_id: user_id) do
-        nil ->
-          nil
+        %Revoluchat.Accounts.UserChat{
+          user_id: target_id,
+          chat_id: target_id,
+          name: remote_user.name,
+          phone: remote_user.phone,
+          avatar_url: remote_user.avatar_url,
+          privacy_settings: remote_user.privacy_settings || %{}
+        }
 
-        uc ->
-          if is_nil(uc.name) or is_nil(uc.avatar_url) do
-            schedule_profile_sync(app_id, user_id)
-          end
+      _ ->
+        case Repo.get_by(UserChat, app_id: app_id, user_id: clean_uid) || Repo.get_by(UserChat, app_id: app_id, user_id: user_id) do
+          nil ->
+            nil
 
-          uc
-      end
+          uc ->
+            if is_nil(uc.name) or is_nil(uc.avatar_url) do
+              schedule_profile_sync(app_id, user_id)
+            end
+
+            uc
+        end
     end
   end
 
@@ -450,10 +449,13 @@ defmodule Revoluchat.Accounts do
 
         %{
           id: target_id,
+          uuid: u.uuid || u.id,
+          raw_id: u.id,
           chat_id: target_id,
           name: u.name || "User #{target_id}",
           phone: u.phone,
-          avatar_url: u.avatar_url
+          avatar_url: u.avatar_url,
+          privacy_settings: u.privacy_settings || %{}
         }
       end)
     else
@@ -470,6 +472,20 @@ defmodule Revoluchat.Accounts do
         }
       end)
     end
+  end
+
+  def build_users_map(users_data) do
+    Enum.reduce(users_data, %{}, fn u, acc ->
+      id_str = to_string(u.id)
+      uuid_str = to_string(Map.get(u, :uuid, u.id))
+      raw_id_str = to_string(Map.get(u, :raw_id, u.id))
+
+      acc
+      |> Map.put(id_str, u)
+      |> Map.put(uuid_str, u)
+      |> Map.put(raw_id_str, u)
+      |> Map.put(u.id, u)
+    end)
   end
 
   # ─── User Chat Registration ──────────────────────────────────────────────────
