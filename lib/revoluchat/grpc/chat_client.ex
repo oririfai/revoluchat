@@ -546,6 +546,7 @@ defmodule Revoluchat.Grpc.ChatClient do
 
   def view_status(app_id, status_id, viewer_id) do
     request = %ViewStatusRequest{
+      app_id: ensure_string(app_id),
       status_id: ensure_string(status_id),
       viewer_id: ensure_string(viewer_id)
     }
@@ -564,7 +565,8 @@ defmodule Revoluchat.Grpc.ChatClient do
   def delete_status(app_id, status_id, user_id) do
     request = %DeleteStatusRequest{
       app_id: app_id,
-      status_id: ensure_string(status_id)
+      status_id: ensure_string(status_id),
+      user_id: ensure_string(user_id)
     }
 
     with {:ok, channel} <- connect(),

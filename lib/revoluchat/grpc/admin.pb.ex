@@ -3,7 +3,7 @@ defmodule Admin.V1.ListUsersRequest do
 
   use Protobuf,
     full_name: "admin.v1.ListUsersRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :query, 1, type: :string
@@ -17,7 +17,7 @@ defmodule Admin.V1.ListUsersResponse do
 
   use Protobuf,
     full_name: "admin.v1.ListUsersResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :users, 1, repeated: true, type: Admin.V1.AdminUser
@@ -30,7 +30,7 @@ defmodule Admin.V1.AdminUser do
 
   use Protobuf,
     full_name: "admin.v1.AdminUser",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -47,7 +47,7 @@ defmodule Admin.V1.SuspendUserRequest do
 
   use Protobuf,
     full_name: "admin.v1.SuspendUserRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :user_id, 1, type: :string, json_name: "userId"
@@ -60,7 +60,7 @@ defmodule Admin.V1.UnsuspendUserRequest do
 
   use Protobuf,
     full_name: "admin.v1.UnsuspendUserRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :user_id, 1, type: :string, json_name: "userId"
@@ -71,7 +71,7 @@ defmodule Admin.V1.ActionResponse do
 
   use Protobuf,
     full_name: "admin.v1.ActionResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :success, 1, type: :bool
@@ -83,7 +83,7 @@ defmodule Admin.V1.GetGlobalChatStatsRequest do
 
   use Protobuf,
     full_name: "admin.v1.GetGlobalChatStatsRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 end
 
@@ -92,7 +92,7 @@ defmodule Admin.V1.MessageVolumeStat do
 
   use Protobuf,
     full_name: "admin.v1.MessageVolumeStat",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :date, 1, type: :string
@@ -104,7 +104,7 @@ defmodule Admin.V1.GetGlobalChatStatsResponse do
 
   use Protobuf,
     full_name: "admin.v1.GetGlobalChatStatsResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :total_messages, 1, type: :int64, json_name: "totalMessages"
@@ -118,10 +118,68 @@ defmodule Admin.V1.GetGlobalChatStatsResponse do
   field :total_connected_users, 4, type: :int64, json_name: "totalConnectedUsers"
 end
 
+defmodule Admin.V1.Wallpaper do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.Wallpaper",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :id, 1, type: :string
+  field :url, 2, type: :string
+  field :is_active, 3, type: :bool, json_name: "isActive"
+  field :created_at, 4, type: :string, json_name: "createdAt"
+end
+
+defmodule Admin.V1.AddWallpaperRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.AddWallpaperRequest",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :url, 1, type: :string
+end
+
+defmodule Admin.V1.DeleteWallpaperRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.DeleteWallpaperRequest",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :id, 1, type: :string
+end
+
+defmodule Admin.V1.GetWallpapersRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetWallpapersRequest",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :active_only, 1, type: :bool, json_name: "activeOnly"
+end
+
+defmodule Admin.V1.GetWallpapersResponse do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetWallpapersResponse",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :wallpapers, 1, repeated: true, type: Admin.V1.Wallpaper
+end
+
 defmodule Admin.V1.AdminService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "admin.v1.AdminService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "admin.v1.AdminService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :ListUsers, Admin.V1.ListUsersRequest, Admin.V1.ListUsersResponse
 
@@ -130,6 +188,12 @@ defmodule Admin.V1.AdminService.Service do
   rpc :UnsuspendUser, Admin.V1.UnsuspendUserRequest, Admin.V1.ActionResponse
 
   rpc :GetGlobalChatStats, Admin.V1.GetGlobalChatStatsRequest, Admin.V1.GetGlobalChatStatsResponse
+
+  rpc :AddWallpaper, Admin.V1.AddWallpaperRequest, Admin.V1.Wallpaper
+
+  rpc :DeleteWallpaper, Admin.V1.DeleteWallpaperRequest, Admin.V1.ActionResponse
+
+  rpc :GetWallpapers, Admin.V1.GetWallpapersRequest, Admin.V1.GetWallpapersResponse
 end
 
 defmodule Admin.V1.AdminService.Stub do

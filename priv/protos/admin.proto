@@ -12,6 +12,11 @@ service AdminService {
   
   // Stats
   rpc GetGlobalChatStats(GetGlobalChatStatsRequest) returns (GetGlobalChatStatsResponse);
+
+  // Wallpapers
+  rpc AddWallpaper(AddWallpaperRequest) returns (Wallpaper);
+  rpc DeleteWallpaper(DeleteWallpaperRequest) returns (ActionResponse);
+  rpc GetWallpapers(GetWallpapersRequest) returns (GetWallpapersResponse);
 }
 
 message ListUsersRequest {
@@ -65,4 +70,27 @@ message GetGlobalChatStatsResponse {
   int64 total_conversations = 2;
   repeated MessageVolumeStat message_volume_stats = 3;
   int64 total_connected_users = 4;
+}
+
+message Wallpaper {
+  string id = 1; // numeric ID
+  string url = 2;
+  bool is_active = 3;
+  string created_at = 4;
+}
+
+message AddWallpaperRequest {
+  string url = 1;
+}
+
+message DeleteWallpaperRequest {
+  string id = 1; // numeric ID
+}
+
+message GetWallpapersRequest {
+  bool active_only = 1;
+}
+
+message GetWallpapersResponse {
+  repeated Wallpaper wallpapers = 1;
 }

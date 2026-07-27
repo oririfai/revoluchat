@@ -218,9 +218,20 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
       background_color: status.background_color,
       font_style: status.font_style,
       expires_at: parse_dt(status.expires_at),
-      created_at: parse_dt(status.created_at)
+      created_at: parse_dt(status.created_at),
+      views: normalize_status_views(Map.get(status, :views) || [])
     }
   end
+
+  defp normalize_status_views(views) when is_list(views) do
+    Enum.map(views, fn v ->
+      %{
+        viewer_id: to_string(Map.get(v, :viewer_id) || Map.get(v, "viewer_id") || ""),
+        viewed_at: to_string(Map.get(v, :viewed_at) || Map.get(v, "viewed_at") || "")
+      }
+    end)
+  end
+  defp normalize_status_views(_), do: []
 
   defp normalize_conversation(nil), do: nil
   defp normalize_conversation(conv) do

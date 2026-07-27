@@ -152,8 +152,8 @@ defmodule RevoluchatWeb.GroupController do
         target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
         current_photo = Map.get(current_privacy, "profile_photo") || Map.get(current_privacy, :profile_photo)
 
-        target_photo_disabled = target_photo in ["Tidak ada", "Nobody", "nobody"]
-        current_photo_disabled = current_photo in ["Tidak ada", "Nobody", "nobody"]
+        target_photo_disabled = target_photo == 3
+        current_photo_disabled = current_photo == 3
 
         hide_photo = not is_self and (target_photo_disabled or current_photo_disabled)
         member_avatar = if hide_photo, do: nil, else: (user && user.avatar_url)

@@ -64,7 +64,7 @@ defmodule RevoluchatWeb.ChatChannel do
         case Revoluchat.Grpc.UserClient.get_user(user_id) do
           {:ok, user} ->
             last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
-            last_seen not in ["Tidak ada", "Nobody", "nobody"]
+            last_seen != 3
           _ -> true
         end
       else
@@ -1182,7 +1182,7 @@ defmodule RevoluchatWeb.ChatChannel do
         is_self = to_string(message.sender_id) == to_string(current_user_id)
         target_privacy = (user && (Map.get(user, :privacy_settings) || Map.get(user, "privacy_settings"))) || %{}
         target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
-        hide_photo = not is_self and target_photo in ["Tidak ada", "Nobody", "nobody"]
+        hide_photo = not is_self and target_photo == 3
 
         raw_avatar = if(user, do: resolve_group_avatar(user.avatar_url), else: nil)
         avatar_url = if hide_photo, do: nil, else: raw_avatar
@@ -1347,8 +1347,8 @@ defmodule RevoluchatWeb.ChatChannel do
     target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
     current_photo = Map.get(current_privacy, "profile_photo") || Map.get(current_privacy, :profile_photo)
 
-    target_photo_disabled = target_photo in ["Tidak ada", "Nobody", "nobody"]
-    current_photo_disabled = current_photo in ["Tidak ada", "Nobody", "nobody"]
+    target_photo_disabled = target_photo == 3
+    current_photo_disabled = current_photo == 3
 
     hide_photo = not is_self and (target_photo_disabled or current_photo_disabled)
 

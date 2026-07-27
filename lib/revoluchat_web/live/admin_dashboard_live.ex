@@ -40,6 +40,10 @@ defmodule RevoluchatWeb.AdminDashboardLive do
      |> assign(revoking_server_key_id: nil)
      |> assign(show_server_error_modal: false)
      |> assign(server_error_message: "")
+     # Setting Section assigns
+     |> assign(setting_tab: :general)
+     |> assign(wallpapers: [])
+     |> allow_upload(:wallpaper, accept: ~w(.jpg .jpeg .png), max_entries: 1)
      # User Section assigns
      |> assign(users: [])
      |> assign(user_page: 1)
@@ -100,7 +104,16 @@ defmodule RevoluchatWeb.AdminDashboardLive do
 
   defp apply_action(socket, :setting, _params) do
     if Revoluchat.Accounts.Admin.has_permission?(socket.assigns.current_admin, "manage_settings") do
-      socket |> assign(active_tab: :setting) |> assign(page_title: "Settings")
+      wallpapers =
+        case Revoluchat.Grpc.AdminClient.get_wallpapers() do
+          {:ok, list} -> list
+          _ -> []
+        end
+
+      socket
+      |> assign(active_tab: :setting)
+      |> assign(page_title: "Settings")
+      |> assign(wallpapers: wallpapers)
     else
       socket |> put_flash(:error, "Unauthorized") |> push_navigate(to: "/admin")
     end
@@ -507,6 +520,88 @@ defmodule RevoluchatWeb.AdminDashboardLive do
     {:noreply, assign(socket, sidebar_collapsed: !socket.assigns.sidebar_collapsed)}
   end
 
+  # ─── Settings Management Events ─────────────────────────────────────────────
+
+  @impl true
+  def handle_event("change_setting_tab", %{"tab" => tab_str}, socket) do
+    tab = String.to_existing_atom(tab_str)
+    {:noreply, assign(socket, setting_tab: tab)}
+  end
+
+  @impl true
+  def handle_event("validate_wallpaper", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("save_wallpaper", _params, socket) do
+    # Consume uploaded file
+    uploaded_files = consume_uploaded_entries(socket, :wallpaper, fn %{path: path}, _entry ->
+      binary = File.read!(path)
+      # Generate random id to avoid collisions
+      uuid = Ecto.UUID.generate()
+      filename = "wallpaper_#{uuid}.jpg"
+      key = "wallpapers/#{filename}"
+      
+      case Revoluchat.Storage.upload_binary(key, binary, "image/jpeg") do
+        {:ok, _} ->
+          # Get public host URL
+          public_host_str = Application.get_env(:revoluchat, :storage)[:public_host] || "localhost:9000/revoluchat"
+          prefixed_host =
+            if String.starts_with?(public_host_str, "http://") or String.starts_with?(public_host_str, "https://") do
+              public_host_str
+            else
+              "https://" <> public_host_str
+            end
+          
+          url = "#{prefixed_host}/#{key}"
+          case Revoluchat.Grpc.AdminClient.add_wallpaper(url) do
+            {:ok, _} -> {:ok, url}
+            {:error, reason} -> 
+              Logger.error("GRPC add_wallpaper failed: #{inspect(reason)}")
+              {:postpone, "gRPC upload failed"}
+          end
+        error ->
+          Logger.error("Failed to upload wallpaper to storage: #{inspect(error)}")
+          {:postpone, "Upload failed"}
+      end
+    end)
+
+    if Enum.empty?(uploaded_files) do
+      {:noreply, put_flash(socket, :error, "Failed to upload wallpaper.")}
+    else
+      # Refresh wallpapers
+      wallpapers =
+        case Revoluchat.Grpc.AdminClient.get_wallpapers() do
+          {:ok, list} -> list
+          _ -> []
+        end
+      {:noreply,
+       socket
+       |> put_flash(:info, "Wallpaper uploaded successfully.")
+       |> assign(wallpapers: wallpapers)}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_wallpaper", %{"id" => id}, socket) do
+    case Revoluchat.Grpc.AdminClient.delete_wallpaper(id) do
+      {:ok, _} ->
+        # Refresh wallpapers
+        wallpapers =
+          case Revoluchat.Grpc.AdminClient.get_wallpapers() do
+            {:ok, list} -> list
+            _ -> []
+          end
+        {:noreply,
+         socket
+         |> put_flash(:info, "Wallpaper deleted.")
+         |> assign(wallpapers: wallpapers)}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete wallpaper.")}
+    end
+  end
+
   # ─── Admins Management Events ───────────────────────────────────────────────
 
   @impl true
@@ -791,7 +886,11 @@ defmodule RevoluchatWeb.AdminDashboardLive do
       <% end %>
 
       <%= if @active_tab == :setting do %>
-        <SettingSection.render />
+        <SettingSection.render
+          setting_tab={@setting_tab}
+          wallpapers={@wallpapers}
+          uploads={@uploads}
+        />
       <% end %>
 
       <%= if @active_tab == :api_keys do %>

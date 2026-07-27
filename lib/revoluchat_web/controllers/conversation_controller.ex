@@ -440,8 +440,8 @@ defmodule RevoluchatWeb.ConversationController do
     target_last_seen = Map.get(target_privacy, "last_seen") || Map.get(target_privacy, :last_seen)
     current_last_seen = Map.get(current_privacy, "last_seen") || Map.get(current_privacy, :last_seen)
 
-    target_disabled = target_last_seen in ["Tidak ada", "Nobody", "nobody"]
-    current_disabled = current_last_seen in ["Tidak ada", "Nobody", "nobody"]
+    target_disabled = target_last_seen == 3
+    current_disabled = current_last_seen == 3
 
     hide_last_seen = not is_self and (target_disabled or current_disabled)
 
@@ -455,8 +455,8 @@ defmodule RevoluchatWeb.ConversationController do
     target_photo = Map.get(target_privacy, "profile_photo") || Map.get(target_privacy, :profile_photo)
     current_photo = Map.get(current_privacy, "profile_photo") || Map.get(current_privacy, :profile_photo)
 
-    target_photo_disabled = target_photo in ["Tidak ada", "Nobody", "nobody"]
-    current_photo_disabled = current_photo in ["Tidak ada", "Nobody", "nobody"]
+    target_photo_disabled = target_photo == 3
+    current_photo_disabled = current_photo == 3
 
     hide_photo = not is_self and (target_photo_disabled or current_photo_disabled)
     avatar_url = if hide_photo, do: nil, else: (user && user.avatar_url)

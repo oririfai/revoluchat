@@ -31,7 +31,7 @@ defmodule RevoluchatWeb.UserChannel do
         case Revoluchat.Grpc.UserClient.get_user(user_id) do
           {:ok, user} ->
             last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
-            last_seen not in ["Tidak ada", "Nobody", "nobody"]
+            last_seen != 3
           _ -> true
         end
       else
@@ -80,13 +80,13 @@ defmodule RevoluchatWeb.UserChannel do
     allow_presence =
       cond do
         !is_nil(last_seen_param) ->
-          last_seen_param not in ["Tidak ada", "Nobody", "nobody"]
+          last_seen_param != 3
 
         tier == "advance" ->
           case Revoluchat.Grpc.UserClient.get_user(user_id) do
             {:ok, user} ->
               last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
-              last_seen not in ["Tidak ada", "Nobody", "nobody"]
+              last_seen != 3
 
             _ ->
               true
@@ -1187,7 +1187,7 @@ defmodule RevoluchatWeb.UserChannel do
           case Revoluchat.Grpc.UserClient.get_user(user_id) do
             {:ok, user} ->
               last_seen = Map.get(user.privacy_settings || %{}, "last_seen", "Everyone")
-              last_seen not in ["Tidak ada", "Nobody", "nobody"]
+              last_seen != 3
             _ -> true
           end
         else

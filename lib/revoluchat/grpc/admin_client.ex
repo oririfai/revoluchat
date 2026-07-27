@@ -9,6 +9,9 @@ defmodule Revoluchat.Grpc.AdminClient do
     SuspendUserRequest,
     UnsuspendUserRequest,
     GetGlobalChatStatsRequest,
+    AddWallpaperRequest,
+    DeleteWallpaperRequest,
+    GetWallpapersRequest,
     AdminService.Stub
   }
 
@@ -129,6 +132,60 @@ defmodule Revoluchat.Grpc.AdminClient do
       {:error, reason} ->
         Logger.error("[AdminClient] Failed to connect to gRPC: #{inspect(reason)}")
         {:error, reason}
+    end
+  end
+
+  @doc """
+  Add a new wallpaper.
+  """
+  def add_wallpaper(url) do
+    request = %AddWallpaperRequest{url: url}
+    chat_endpoint = System.get_env("CHAT_SERVICE_GRPC_ENDPOINT", "localhost:50055")
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(chat_endpoint, adapter_opts: [connect_timeout: 1000]) do
+      {:ok, channel} ->
+        case Stub.add_wallpaper(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Delete a wallpaper by ID.
+  """
+  def delete_wallpaper(id) do
+    request = %DeleteWallpaperRequest{id: id}
+    chat_endpoint = System.get_env("CHAT_SERVICE_GRPC_ENDPOINT", "localhost:50055")
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(chat_endpoint, adapter_opts: [connect_timeout: 1000]) do
+      {:ok, channel} ->
+        case Stub.delete_wallpaper(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Get all wallpapers.
+  """
+  def get_wallpapers(active_only \\ false) do
+    request = %GetWallpapersRequest{active_only: active_only}
+    chat_endpoint = System.get_env("CHAT_SERVICE_GRPC_ENDPOINT", "localhost:50055")
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(chat_endpoint, adapter_opts: [connect_timeout: 1000]) do
+      {:ok, channel} ->
+        case Stub.get_wallpapers(channel, request, metadata: metadata) do
+          {:ok, response} -> {:ok, response.wallpapers}
+          {:error, reason} -> {:error, reason}
+        end
+      {:error, reason} -> {:error, reason}
     end
   end
 end
