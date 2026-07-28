@@ -3,7 +3,7 @@ defmodule Revoluchat.V1.DeleteConversationRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteConversationRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -16,7 +16,7 @@ defmodule Revoluchat.V1.ArchiveConversationRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ArchiveConversationRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -29,7 +29,7 @@ defmodule Revoluchat.V1.UnarchiveConversationRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.UnarchiveConversationRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -42,7 +42,7 @@ defmodule Revoluchat.V1.CreateConversationRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.CreateConversationRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :user_a_id, 1, type: :string, json_name: "userAId"
@@ -55,7 +55,7 @@ defmodule Revoluchat.V1.CreateConversationResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.CreateConversationResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :conversation_id, 1, type: :string, json_name: "conversationId"
@@ -68,7 +68,7 @@ defmodule Revoluchat.V1.ListConversationsRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListConversationsRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :user_id, 1, type: :string, json_name: "userId"
@@ -81,7 +81,7 @@ defmodule Revoluchat.V1.ListConversationsResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListConversationsResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :conversations, 1, repeated: true, type: Revoluchat.V1.Conversation
@@ -92,7 +92,7 @@ defmodule Revoluchat.V1.GetConversationRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.GetConversationRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -104,7 +104,7 @@ defmodule Revoluchat.V1.GetConversationResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.GetConversationResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :conversation, 1, type: Revoluchat.V1.Conversation
@@ -115,7 +115,7 @@ defmodule Revoluchat.V1.Conversation do
 
   use Protobuf,
     full_name: "revoluchat.v1.Conversation",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -135,7 +135,7 @@ defmodule Revoluchat.V1.Group do
 
   use Protobuf,
     full_name: "revoluchat.v1.Group",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -158,7 +158,7 @@ defmodule Revoluchat.V1.GroupMember do
 
   use Protobuf,
     full_name: "revoluchat.v1.GroupMember",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :user_id, 1, type: :string, json_name: "userId"
@@ -174,7 +174,7 @@ defmodule Revoluchat.V1.CreateGroupRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.CreateGroupRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -190,7 +190,7 @@ defmodule Revoluchat.V1.CreateGroupResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.CreateGroupResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :group, 1, type: Revoluchat.V1.Group
@@ -201,7 +201,7 @@ defmodule Revoluchat.V1.GetGroupRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.GetGroupRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -213,7 +213,7 @@ defmodule Revoluchat.V1.GetGroupResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.GetGroupResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :group, 1, type: Revoluchat.V1.Group
@@ -224,7 +224,7 @@ defmodule Revoluchat.V1.AddMembersRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.AddMembersRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -238,7 +238,7 @@ defmodule Revoluchat.V1.RemoveMemberRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.RemoveMemberRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -251,7 +251,7 @@ defmodule Revoluchat.V1.UpdateGroupRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.UpdateGroupRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -267,7 +267,7 @@ defmodule Revoluchat.V1.UpdateGroupResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.UpdateGroupResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :group, 1, type: Revoluchat.V1.Group
@@ -278,7 +278,7 @@ defmodule Revoluchat.V1.LeaveGroupRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.LeaveGroupRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -290,7 +290,7 @@ defmodule Revoluchat.V1.AcceptGroupInvitationRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.AcceptGroupInvitationRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -302,7 +302,7 @@ defmodule Revoluchat.V1.DeleteGroupRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteGroupRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -314,7 +314,7 @@ defmodule Revoluchat.V1.MuteGroupRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.MuteGroupRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -327,7 +327,7 @@ defmodule Revoluchat.V1.ActionResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.ActionResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :success, 1, type: :bool
@@ -339,7 +339,7 @@ defmodule Revoluchat.V1.Attachment do
 
   use Protobuf,
     full_name: "revoluchat.v1.Attachment",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -360,7 +360,7 @@ defmodule Revoluchat.V1.RegisterAttachmentRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.RegisterAttachmentRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -379,7 +379,7 @@ defmodule Revoluchat.V1.RegisterAttachmentResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.RegisterAttachmentResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :attachment, 1, type: Revoluchat.V1.Attachment
@@ -390,7 +390,7 @@ defmodule Revoluchat.V1.ListAttachmentsByIdsRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListAttachmentsByIdsRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -402,7 +402,7 @@ defmodule Revoluchat.V1.ListAttachmentsByIdsResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListAttachmentsByIdsResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :attachments, 1, repeated: true, type: Revoluchat.V1.Attachment
@@ -413,7 +413,7 @@ defmodule Revoluchat.V1.Message do
 
   use Protobuf,
     full_name: "revoluchat.v1.Message",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -440,7 +440,7 @@ defmodule Revoluchat.V1.InsertMessageRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.InsertMessageRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -461,7 +461,7 @@ defmodule Revoluchat.V1.InsertMessageResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.InsertMessageResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :message, 1, type: Revoluchat.V1.Message
@@ -472,7 +472,7 @@ defmodule Revoluchat.V1.ListMessagesRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListMessagesRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -489,7 +489,7 @@ defmodule Revoluchat.V1.ListMessagesResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListMessagesResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :messages, 1, repeated: true, type: Revoluchat.V1.Message
@@ -500,7 +500,7 @@ defmodule Revoluchat.V1.MarkReadRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.MarkReadRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -513,7 +513,7 @@ defmodule Revoluchat.V1.MarkReadResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.MarkReadResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :message, 1, type: Revoluchat.V1.Message
@@ -524,7 +524,7 @@ defmodule Revoluchat.V1.MarkDeliveredRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.MarkDeliveredRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -537,7 +537,7 @@ defmodule Revoluchat.V1.MarkDeliveredResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.MarkDeliveredResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :message, 1, type: Revoluchat.V1.Message
@@ -548,7 +548,7 @@ defmodule Revoluchat.V1.DeleteMessageRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteMessageRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -561,7 +561,7 @@ defmodule Revoluchat.V1.DeleteMessageResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteMessageResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :message, 1, type: Revoluchat.V1.Message
@@ -572,7 +572,7 @@ defmodule Revoluchat.V1.BulkDeleteMessagesRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.BulkDeleteMessagesRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -585,7 +585,7 @@ defmodule Revoluchat.V1.BulkDeleteMessagesResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.BulkDeleteMessagesResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :count, 1, type: :uint32
@@ -596,7 +596,7 @@ defmodule Revoluchat.V1.GetCallRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.GetCallRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -608,7 +608,7 @@ defmodule Revoluchat.V1.GetCallResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.GetCallResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :call, 1, type: Revoluchat.V1.Call
@@ -619,7 +619,7 @@ defmodule Revoluchat.V1.Call do
 
   use Protobuf,
     full_name: "revoluchat.v1.Call",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -640,7 +640,7 @@ defmodule Revoluchat.V1.InitiateCallRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.InitiateCallRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -656,7 +656,7 @@ defmodule Revoluchat.V1.InitiateCallResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.InitiateCallResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :call, 1, type: Revoluchat.V1.Call
@@ -667,7 +667,7 @@ defmodule Revoluchat.V1.UpdateCallStatusRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.UpdateCallStatusRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -680,7 +680,7 @@ defmodule Revoluchat.V1.UpdateCallStatusResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.UpdateCallStatusResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :call, 1, type: Revoluchat.V1.Call
@@ -691,7 +691,7 @@ defmodule Revoluchat.V1.ListCallHistoryRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListCallHistoryRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -705,7 +705,7 @@ defmodule Revoluchat.V1.ListCallHistoryResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListCallHistoryResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :records, 1, repeated: true, type: Revoluchat.V1.CallHistoryRecord
@@ -716,7 +716,7 @@ defmodule Revoluchat.V1.CallHistoryRecord do
 
   use Protobuf,
     full_name: "revoluchat.v1.CallHistoryRecord",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -739,7 +739,7 @@ defmodule Revoluchat.V1.DeleteCallHistoryRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteCallHistoryRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -752,7 +752,7 @@ defmodule Revoluchat.V1.DeleteCallHistoryResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteCallHistoryResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :count, 1, type: :uint32
@@ -763,7 +763,7 @@ defmodule Revoluchat.V1.Status do
 
   use Protobuf,
     full_name: "revoluchat.v1.Status",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :id, 1, type: :string
@@ -784,7 +784,7 @@ defmodule Revoluchat.V1.StatusView do
 
   use Protobuf,
     full_name: "revoluchat.v1.StatusView",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :viewer_id, 1, type: :string, json_name: "viewerId"
@@ -796,7 +796,7 @@ defmodule Revoluchat.V1.CreateStatusRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.CreateStatusRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -814,7 +814,7 @@ defmodule Revoluchat.V1.CreateStatusResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.CreateStatusResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :status, 1, type: Revoluchat.V1.Status
@@ -825,7 +825,7 @@ defmodule Revoluchat.V1.ListStatusesRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListStatusesRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -838,7 +838,7 @@ defmodule Revoluchat.V1.ListStatusesResponse do
 
   use Protobuf,
     full_name: "revoluchat.v1.ListStatusesResponse",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :statuses, 1, repeated: true, type: Revoluchat.V1.Status
@@ -849,7 +849,7 @@ defmodule Revoluchat.V1.ViewStatusRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.ViewStatusRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -862,7 +862,7 @@ defmodule Revoluchat.V1.DeleteStatusRequest do
 
   use Protobuf,
     full_name: "revoluchat.v1.DeleteStatusRequest",
-    protoc_gen_elixir_version: "0.16.0",
+    protoc_gen_elixir_version: "0.17.0",
     syntax: :proto3
 
   field :app_id, 1, type: :string, json_name: "appId"
@@ -873,7 +873,7 @@ end
 defmodule Revoluchat.V1.ConversationService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "revoluchat.v1.ConversationService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "revoluchat.v1.ConversationService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :CreateConversation,
       Revoluchat.V1.CreateConversationRequest,
@@ -909,7 +909,7 @@ end
 defmodule Revoluchat.V1.GroupService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "revoluchat.v1.GroupService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "revoluchat.v1.GroupService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :CreateGroup, Revoluchat.V1.CreateGroupRequest, Revoluchat.V1.CreateGroupResponse
 
@@ -941,7 +941,7 @@ end
 defmodule Revoluchat.V1.AttachmentService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "revoluchat.v1.AttachmentService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "revoluchat.v1.AttachmentService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :RegisterAttachment,
       Revoluchat.V1.RegisterAttachmentRequest,
@@ -961,7 +961,7 @@ end
 defmodule Revoluchat.V1.MessageService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "revoluchat.v1.MessageService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "revoluchat.v1.MessageService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :InsertMessage, Revoluchat.V1.InsertMessageRequest, Revoluchat.V1.InsertMessageResponse
 
@@ -987,7 +987,7 @@ end
 defmodule Revoluchat.V1.CallService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "revoluchat.v1.CallService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "revoluchat.v1.CallService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :InitiateCall, Revoluchat.V1.InitiateCallRequest, Revoluchat.V1.InitiateCallResponse
 
@@ -1015,7 +1015,7 @@ end
 defmodule Revoluchat.V1.StatusService.Service do
   @moduledoc false
 
-  use GRPC.Service, name: "revoluchat.v1.StatusService", protoc_gen_elixir_version: "0.16.0"
+  use GRPC.Service, name: "revoluchat.v1.StatusService", protoc_gen_elixir_version: "0.17.0"
 
   rpc :CreateStatus, Revoluchat.V1.CreateStatusRequest, Revoluchat.V1.CreateStatusResponse
 

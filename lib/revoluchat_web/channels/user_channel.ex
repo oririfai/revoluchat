@@ -1081,7 +1081,11 @@ defmodule RevoluchatWeb.UserChannel do
         caller_identity =
           case Accounts.get_registered_user(app_id, user_id) do
             nil -> caller_identity
-            u -> %{name: u.name || u.phone, photo: u.avatar_url, phone: u.phone}
+            u ->
+              privacy = u.privacy_settings || %{}
+              photo_setting = Map.get(privacy, "profile_photo") || Map.get(privacy, :profile_photo)
+              photo = if photo_setting == 3, do: nil, else: u.avatar_url
+              %{name: u.name || u.phone, photo: photo, phone: u.phone}
           end
 
         payload = %{

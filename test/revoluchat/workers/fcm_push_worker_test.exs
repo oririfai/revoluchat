@@ -46,7 +46,7 @@ defmodule Revoluchat.Workers.FcmPushWorkerTest do
 
       payload = FcmPushWorker.build_message_payload(device_token, msg_map)
 
-      assert payload["message"]["notification"]["body"] == "Mengirimkan pesan terenkripsi"
+      assert payload["message"]["notification"]["body"] == "🔒 New Encrypted Message"
     end
 
     test "masks body if is_encrypted is a string 'true'" do
@@ -66,7 +66,7 @@ defmodule Revoluchat.Workers.FcmPushWorkerTest do
 
       payload = FcmPushWorker.build_message_payload(device_token, msg_map)
 
-      assert payload["message"]["notification"]["body"] == "Mengirimkan pesan terenkripsi"
+      assert payload["message"]["notification"]["body"] == "🔒 New Encrypted Message"
     end
 
     test "truncates long message bodies to 100 characters" do

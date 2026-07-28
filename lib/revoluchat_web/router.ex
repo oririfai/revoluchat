@@ -22,6 +22,14 @@ defmodule RevoluchatWeb.Router do
     plug(RevoluchatWeb.Plugs.AuthPlug)
   end
 
+  pipeline :api_global_rate_limit do
+    plug(RevoluchatWeb.Plugs.HttpRateLimiter,
+      scale_ms: 60_000,
+      limit: 120,
+      key_type: :user_id
+    )
+  end
+
   pipeline :message_rate_limit do
     plug(RevoluchatWeb.Plugs.HttpRateLimiter,
       scale_ms: 60_000,
@@ -77,13 +85,14 @@ defmodule RevoluchatWeb.Router do
       live("/apikeys", AdminDashboardLive, :api_keys)
       live("/serverkeys", AdminDashboardLive, :server_keys)
       live("/admins", AdminDashboardLive, :admins)
+      live("/logs", AdminDashboardLive, :logs)
     end
   end
 
   # ─── API v1 ──────────────────────────────────────────────────────────────────
 
   scope "/api/v1", RevoluchatWeb do
-    pipe_through([:api, :authenticated])
+    pipe_through([:api, :authenticated, :api_global_rate_limit])
 
     # Conversations
     get("/conversations", ConversationController, :index)

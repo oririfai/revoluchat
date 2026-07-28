@@ -12,7 +12,7 @@ defmodule RevoluchatWeb.GroupController do
     app_id = conn.assigns.current_app_id
     with {:ok, group} <- Chat.get_group(app_id, id) do
       group = preload_group_last_message(group, app_id)
-      json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id)})
+      json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id, %{}, conn.assigns.token, conn.assigns.api_key)})
     end
   end
 
@@ -40,7 +40,7 @@ defmodule RevoluchatWeb.GroupController do
 
       # Notify all members about the new group
       Enum.each(group.members, fn member ->
-        formatted_for_member = format_group(group_preloaded, app_id, member.user_id)
+        formatted_for_member = format_group(group_preloaded, app_id, member.user_id, %{}, conn.assigns.token, conn.assigns.api_key)
         RevoluchatWeb.Endpoint.broadcast("user:#{member.user_id}", "conversation_updated", %{
           conversation_id: "group_#{group.id}",
           type: "group",
@@ -50,32 +50,57 @@ defmodule RevoluchatWeb.GroupController do
 
       conn
       |> put_status(:created)
-      |> json(%{data: format_group(group_preloaded, app_id, user_id)})
+      |> json(%{data: format_group(group_preloaded, app_id, user_id, %{}, conn.assigns.token, conn.assigns.api_key)})
     end
   end
 
   # PUT /api/v1/groups/:id
   def update(conn, %{"id" => id} = params) do
     app_id = conn.assigns.current_app_id
-    with {:ok, group} <- Chat.update_group(app_id, id, params) do
-      group = preload_group_last_message(group, app_id)
-      json(conn, %{data: format_group(group, app_id, conn.assigns.current_user_id)})
+    user_id = conn.assigns.current_user_id
+
+    with {:ok, group} <- Chat.get_group(app_id, id) do
+      if is_member?(group, user_id) do
+        with {:ok, updated_group} <- Chat.update_group(app_id, id, params) do
+          updated_group = preload_group_last_message(updated_group, app_id)
+          json(conn, %{data: format_group(updated_group, app_id, user_id, %{}, conn.assigns.token, conn.assigns.api_key)})
+        end
+      else
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden", message: "You are not a member of this group"})
+      end
     end
   end
 
   # POST /api/v1/groups/:id/members
   def add_members(conn, %{"id" => id, "user_ids" => user_ids}) do
     app_id = conn.assigns.current_app_id
-    with :ok <- Chat.add_members(app_id, id, user_ids) do
-      json(conn, %{success: true})
+    user_id = conn.assigns.current_user_id
+
+    with {:ok, group} <- Chat.get_group(app_id, id) do
+      if is_member?(group, user_id) do
+        with :ok <- Chat.add_members(app_id, id, user_ids) do
+          json(conn, %{success: true})
+        end
+      else
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden", message: "You are not authorized to add members to this group"})
+      end
     end
   end
 
   # DELETE /api/v1/groups/:id/members/:user_id
-  def remove_member(conn, %{"id" => id, "user_id" => user_id}) do
+  def remove_member(conn, %{"id" => id, "user_id" => target_user_id}) do
     app_id = conn.assigns.current_app_id
-    with :ok <- Chat.remove_member(app_id, id, user_id) do
-      json(conn, %{success: true})
+    user_id = conn.assigns.current_user_id
+
+    with {:ok, group} <- Chat.get_group(app_id, id) do
+      # Allow if user is group creator OR user is removing themselves OR user is an admin member
+      if to_string(group.creator_id) == to_string(user_id) or to_string(target_user_id) == to_string(user_id) or is_admin_member?(group, user_id) do
+        with :ok <- Chat.remove_member(app_id, id, target_user_id) do
+          json(conn, %{success: true})
+        end
+      else
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden", message: "You are not authorized to remove this member"})
+      end
     end
   end
 
@@ -125,7 +150,7 @@ defmodule RevoluchatWeb.GroupController do
     end
   end
 
-  def format_group(group, app_id, current_user_id, attachments_map \\ %{}) do
+  def format_group(group, app_id, current_user_id, attachments_map \\ %{}, token \\ nil, api_key \\ nil) do
     # Fetch member details for better FE display
     user_ids = Enum.map(group.members, & &1.user_id)
     users_data = Accounts.list_registered_users_by_ids(app_id, user_ids)
@@ -135,7 +160,7 @@ defmodule RevoluchatWeb.GroupController do
       id: "group_#{group.id}",
       name: group.name,
       description: group.description,
-      avatar_url: resolve_avatar_url(group.avatar_url),
+      avatar_url: resolve_avatar_url(group.avatar_url, token, api_key),
       is_locked: group.is_locked,
       creator_id: group.creator_id,
       inserted_at: group.inserted_at,
@@ -171,7 +196,7 @@ defmodule RevoluchatWeb.GroupController do
           }
         }
       end),
-      last_message: format_last_message(Map.get(group, :last_message), app_id, attachments_map),
+      last_message: format_last_message(Map.get(group, :last_message), attachments_map, app_id, token, api_key),
       my_status: (Enum.find_value(group.members || [], fn m -> 
         if to_string(m.user_id) == to_string(current_user_id) do
           m.status
@@ -184,18 +209,20 @@ defmodule RevoluchatWeb.GroupController do
     end)
   end
 
+  defp format_last_message(%Ecto.Association.NotLoaded{}), do: nil
+  defp format_last_message(%Ecto.Association.NotLoaded{}, _), do: nil
+  defp format_last_message(%Ecto.Association.NotLoaded{}, _, _), do: nil
+  defp format_last_message(%Ecto.Association.NotLoaded{}, _, _, _, _), do: nil
   defp format_last_message(nil), do: nil
-  defp format_last_message(m) do
-    format_last_message(m, Map.get(m, :app_id), %{})
+  defp format_last_message(nil, _), do: nil
+  defp format_last_message(nil, _, _), do: nil
+  defp format_last_message(nil, _, _, _, _), do: nil
+
+  defp format_last_message(m, attachments_map) do
+    format_last_message(m, attachments_map, nil)
   end
 
-  defp format_last_message(nil, _app_id), do: nil
-  defp format_last_message(m, app_id) do
-    format_last_message(m, app_id, %{})
-  end
-
-  defp format_last_message(nil, _app_id, _attachments_map), do: nil
-  defp format_last_message(m, app_id, attachments_map) do
+  defp format_last_message(m, attachments_map, app_id, token \\ nil, api_key \\ nil) do
     app_id = app_id || Map.get(m, :app_id)
     # Get attachment IDs for this message
     attachment_ids = 
@@ -226,7 +253,7 @@ defmodule RevoluchatWeb.GroupController do
           []
       end
 
-    formatted_attachments = Enum.map(attachments_list, &format_attachment/1)
+    formatted_attachments = Enum.map(attachments_list, &format_attachment(&1, token, api_key))
     first_attachment = List.first(formatted_attachments)
 
     %{
@@ -241,10 +268,13 @@ defmodule RevoluchatWeb.GroupController do
     }
   end
 
-  defp format_attachment(nil), do: nil
-  defp format_attachment(att) do
-    base_url = RevoluchatWeb.Endpoint.url()
-    url = "#{base_url}/api/a/v1/attachments/#{att.id}/show"
+  defp format_attachment(nil, _, _), do: nil
+  defp format_attachment(att, token, api_key) do
+    url = if token && api_key do
+      "/api/a/v1/attachments/#{att.id}/show?token=#{token}&api_key=#{api_key}"
+    else
+      "/api/a/v1/attachments/#{att.id}/show"
+    end
 
     type = 
       cond do
@@ -265,18 +295,32 @@ defmodule RevoluchatWeb.GroupController do
     }
   end
 
-  defp resolve_avatar_url(nil), do: nil
-  defp resolve_avatar_url(""), do: nil
-  defp resolve_avatar_url(url) do
+  defp resolve_avatar_url(nil, _, _), do: nil
+  defp resolve_avatar_url("", _, _), do: nil
+  defp resolve_avatar_url(url, token, api_key) do
     # If it's a UUID (36 chars with dashes), treat as attachment ID
     if String.match?(url, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) do
       if to_string(Application.get_env(:revoluchat, :tier_type)) == "advance" do
         "/api/d/attachments/view/#{url}"
       else
-        "/api/a/v1/attachments/#{url}/show"
+        if token && api_key do
+          "/api/a/v1/attachments/#{url}/show?token=#{token}&api_key=#{api_key}"
+        else
+          "/api/a/v1/attachments/#{url}/show"
+        end
       end
     else
       url
     end
+  end
+
+  defp is_member?(group, user_id) do
+    Enum.any?(group.members || [], fn m -> to_string(m.user_id) == to_string(user_id) end)
+  end
+
+  defp is_admin_member?(group, user_id) do
+    Enum.any?(group.members || [], fn m ->
+      to_string(m.user_id) == to_string(user_id) and Map.get(m, :role) in ["admin", "creator", "owner"]
+    end)
   end
 end

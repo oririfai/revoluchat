@@ -10,7 +10,14 @@ mkdir -p lib/revoluchat/grpc
 protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/chat.proto
 protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/user.proto
 protoc --elixir_out=plugins=grpc:./lib/revoluchat/grpc priv/protos/admin.proto
-mv lib/revoluchat/grpc/priv/protos/*.pb.ex lib/revoluchat/grpc/
-rm -rf lib/revoluchat/grpc/priv
+# Move all generated .pb.ex files to the base grpc directory
+find lib/revoluchat/grpc -name "*.pb.ex" -type f -exec mv {} lib/revoluchat/grpc/ \;
+
+# Clean up empty directories
+find lib/revoluchat/grpc -mindepth 1 -type d -empty -delete
+find lib/revoluchat/grpc -type d -name "priv" -exec rm -rf {} +
+find lib/revoluchat/grpc -type d -name "admin" -exec rm -rf {} +
+find lib/revoluchat/grpc -type d -name "user" -exec rm -rf {} +
+find lib/revoluchat/grpc -type d -name "revoluchat" -exec rm -rf {} +
 
 echo "✅ Proto code generated successfully in lib/revoluchat/grpc"

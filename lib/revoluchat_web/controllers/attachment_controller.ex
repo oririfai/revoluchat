@@ -25,34 +25,50 @@ defmodule RevoluchatWeb.AttachmentController do
   end
 
   def upload(conn, %{"id" => id}) do
+    current_user_id = conn.assigns[:current_numeric_user_id] || conn.assigns[:current_user_id]
+    app_id = conn.assigns[:current_app_id]
+
     try do
-      # 50MB max body limit for binary upload
-      case Plug.Conn.read_body(conn, length: 50_000_000) do
+      max_bytes = get_max_attachment_size_bytes()
+
+      case Plug.Conn.read_body(conn, length: max_bytes + 1_000_000) do
         {:ok, binary_data, conn} ->
-          attachment = Chat.get_attachment!(id)
-          
-          case Revoluchat.Storage.upload_binary(
-                 attachment.storage_key,
-                 binary_data,
-                 attachment.mime_type
-               ) do
-            {:ok, _} ->
-              # Auto-approve since we just successfully uploaded it
-              app_id = conn.assigns[:current_app_id]
-              Chat.approve_attachment_direct(app_id, id)
-              
-              json(conn, %{success: true})
-              
-            {:error, reason} ->
+          if byte_size(binary_data) > max_bytes do
+            conn
+            |> put_status(:request_entity_too_large)
+            |> json(%{error: "File size exceeds the server maximum attachment limit of #{div(max_bytes, 1024 * 1024)} MB"})
+          else
+            attachment = Chat.get_attachment!(id)
+
+            # Security check: Ensure uploader matches current user and app_id
+            if to_string(attachment.uploader_id) == to_string(current_user_id) and attachment.app_id == app_id do
+              case Revoluchat.Storage.upload_binary(
+                     attachment.storage_key,
+                     binary_data,
+                     attachment.mime_type
+                   ) do
+                {:ok, _} ->
+                  # Auto-approve since we just successfully uploaded it
+                  Chat.approve_attachment_direct(app_id, id)
+
+                  json(conn, %{success: true})
+
+                {:error, reason} ->
+                  conn
+                  |> put_status(:bad_request)
+                  |> json(%{error: "Failed to upload to storage", details: inspect(reason)})
+              end
+            else
               conn
-              |> put_status(:bad_request)
-              |> json(%{error: "Failed to upload to storage", details: inspect(reason)})
+              |> put_status(:forbidden)
+              |> json(%{error: "forbidden", message: "You are not authorized to upload to this attachment"})
+            end
           end
 
         {:more, _, _} ->
           conn
-          |> put_status(:bad_request)
-          |> json(%{error: "Body is too large or chunked incorrectly"})
+          |> put_status(:request_entity_too_large)
+          |> json(%{error: "File size exceeds the maximum allowed attachment limit"})
 
         _ ->
           conn
@@ -61,13 +77,11 @@ defmodule RevoluchatWeb.AttachmentController do
       end
     rescue
       e ->
+        Logger.error("Attachment upload exception for ID #{id}: #{inspect(e)}")
+
         conn
         |> put_status(:bad_request)
-        |> json(%{
-          error: "Exception occurred", 
-          exception: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        })
+        |> json(%{error: "Failed to process attachment upload"})
     end
   end
 
@@ -142,4 +156,16 @@ defmodule RevoluchatWeb.AttachmentController do
   end
 
   # ─── Private ─────────────────────────────────────────────────────────────────
+  defp get_max_attachment_size_bytes do
+    mb_str =
+      case Revoluchat.Grpc.AdminClient.get_app_preferences(["max_attachment_size_mb"]) do
+        {:ok, %{"max_attachment_size_mb" => val}} when is_binary(val) and val != "" -> val
+        _ -> "25"
+      end
+
+    case Integer.parse(mb_str) do
+      {mb, _} when mb > 0 -> mb * 1_024 * 1_024
+      _ -> 25 * 1_024 * 1_024
+    end
+  end
 end

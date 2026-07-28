@@ -17,6 +17,10 @@ service AdminService {
   rpc AddWallpaper(AddWallpaperRequest) returns (Wallpaper);
   rpc DeleteWallpaper(DeleteWallpaperRequest) returns (ActionResponse);
   rpc GetWallpapers(GetWallpapersRequest) returns (GetWallpapersResponse);
+  
+  // App Preferences
+  rpc SetAppPreference(SetAppPreferenceRequest) returns (ActionResponse);
+  rpc GetAppPreferences(GetAppPreferencesRequest) returns (GetAppPreferencesResponse);
 }
 
 message ListUsersRequest {
@@ -77,6 +81,19 @@ message Wallpaper {
   string url = 2;
   bool is_active = 3;
   string created_at = 4;
+}
+
+message SetAppPreferenceRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message GetAppPreferencesRequest {
+  repeated string keys = 1;
+}
+
+message GetAppPreferencesResponse {
+  map<string, string> preferences = 1;
 }
 
 message AddWallpaperRequest {

@@ -89,6 +89,16 @@ defmodule RevoluchatWeb.DashboardComponents do
               collapsed={@collapsed}
             />
           <% end %>
+
+          <%= if Revoluchat.Accounts.Admin.has_permission?(@current_admin, "view_dashboard") or Revoluchat.Accounts.Admin.has_permission?(@current_admin, "manage_settings") do %>
+            <.nav_item
+              href={~p"/admin/logs"}
+              active={@active_tab == :logs}
+              icon="hero-clipboard-document-list"
+              text="Log"
+              collapsed={@collapsed}
+            />
+          <% end %>
         </nav>
       </div>
 

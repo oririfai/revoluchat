@@ -1065,21 +1065,28 @@ defmodule RevoluchatWeb.ChatChannel do
 
   defp join_group(_topic_app_id, group_id, app_id, user_id, socket) do
     raw_id = clean_id(group_id)
-    socket = assign(socket, :group_id, group_id)
-    messages = Chat.list_messages(app_id, nil, user_id, group_id: raw_id, limit: 50)
 
-    # Fetch group metadata to return to client
-    group_meta =
-      case Chat.get_group(app_id, raw_id) do
-        {:ok, g} ->
-          formatted = RevoluchatWeb.GroupController.format_group(g, app_id, user_id)
-          %{group: formatted, my_status: formatted.my_status}
+    case Chat.get_group(app_id, raw_id) do
+      {:ok, group} ->
+        case Enum.find(group.members || [], &(to_string(&1.user_id) == to_string(user_id))) do
+          member when not is_nil(member) ->
+            socket = assign(socket, :group_id, group_id)
+            messages = Chat.list_messages(app_id, nil, user_id, group_id: raw_id, limit: 50)
+            formatted_group = RevoluchatWeb.GroupController.format_group(group, app_id, user_id)
 
-        _ ->
-          %{}
-      end
+            finish_join(messages, app_id, group_id, user_id, socket, %{
+              group: formatted_group,
+              my_status: member.status
+            })
 
-    finish_join(messages, app_id, group_id, user_id, socket, group_meta)
+          nil ->
+            Logger.warning("ChatChannel: User #{user_id} unauthorized for group #{group_id}")
+            {:error, %{reason: "unauthorized"}}
+        end
+
+      _ ->
+        {:error, %{reason: "group_not_found"}}
+    end
   end
 
   defp finish_join(messages, app_id, target_id, user_id, socket, extra_meta) do
@@ -1419,12 +1426,10 @@ defmodule RevoluchatWeb.ChatChannel do
   defp format_attachment(nil, _socket), do: nil
 
   defp format_attachment(att, socket) do
-    # Generate full authenticated proxy URL
-    base_url = RevoluchatWeb.Endpoint.url()
     token = socket.assigns.token
     api_key = socket.assigns.api_key
 
-    url = "#{base_url}/api/a/v1/attachments/#{att.id}/show?token=#{token}&api_key=#{api_key}"
+    url = "/api/a/v1/attachments/#{att.id}/show?token=#{token}&api_key=#{api_key}"
 
     type =
       cond do
@@ -1567,7 +1572,11 @@ defmodule RevoluchatWeb.ChatChannel do
         caller_identity =
           case Accounts.get_registered_user(app_id, user_id) do
             nil -> caller_identity
-            u -> %{name: u.name || u.phone, photo: u.avatar_url, phone: u.phone}
+            u ->
+              privacy = u.privacy_settings || %{}
+              photo_setting = Map.get(privacy, "profile_photo") || Map.get(privacy, :profile_photo)
+              photo = if photo_setting == 3, do: nil, else: u.avatar_url
+              %{name: u.name || u.phone, photo: photo, phone: u.phone}
           end
 
         payload = %{

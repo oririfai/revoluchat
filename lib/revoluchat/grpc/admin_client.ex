@@ -12,6 +12,8 @@ defmodule Revoluchat.Grpc.AdminClient do
     AddWallpaperRequest,
     DeleteWallpaperRequest,
     GetWallpapersRequest,
+    SetAppPreferenceRequest,
+    GetAppPreferencesRequest,
     AdminService.Stub
   }
 
@@ -186,6 +188,57 @@ defmodule Revoluchat.Grpc.AdminClient do
           {:error, reason} -> {:error, reason}
         end
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Set an application preference via Go gRPC.
+  """
+  def set_app_preference(key, value) do
+    request = %SetAppPreferenceRequest{
+      key: key,
+      value: value
+    }
+
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(endpoint(), adapter_opts: [connect_timeout: 1000]) do
+      {:ok, channel} ->
+        case Stub.set_app_preference(channel, request, metadata: metadata) do
+          {:ok, response} ->
+            {:ok, %{success: response.success, message: response.message}}
+          {:error, reason} ->
+            Logger.error("[AdminClient] SetAppPreference error: #{inspect(reason)}")
+            {:error, reason}
+        end
+      {:error, reason} ->
+        Logger.error("[AdminClient] Failed to connect to gRPC: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Get multiple application preferences by keys via Go gRPC.
+  """
+  def get_app_preferences(keys) do
+    request = %GetAppPreferencesRequest{
+      keys: keys
+    }
+
+    metadata = Revoluchat.Grpc.Interceptors.AuthClient.get_auth_metadata()
+
+    case GRPC.Stub.connect(endpoint(), adapter_opts: [connect_timeout: 1000]) do
+      {:ok, channel} ->
+        case Stub.get_app_preferences(channel, request, metadata: metadata) do
+          {:ok, response} ->
+            {:ok, response.preferences}
+          {:error, reason} ->
+            Logger.error("[AdminClient] GetAppPreferences error: #{inspect(reason)}")
+            {:error, reason}
+        end
+      {:error, reason} ->
+        Logger.error("[AdminClient] Failed to connect to gRPC: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 end

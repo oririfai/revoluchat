@@ -10,7 +10,7 @@ ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 # =========================================================================
 # STEP 1: BUILDER
 # =========================================================================
-FROM ${BUILDER_IMAGE} as builder
+FROM ${BUILDER_IMAGE} AS builder
 
 # install build dependencies
 RUN apt-get update -y && apt-get install -y build-essential git curl ca-certificates \

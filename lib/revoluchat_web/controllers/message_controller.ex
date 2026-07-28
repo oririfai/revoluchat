@@ -11,7 +11,11 @@ defmodule RevoluchatWeb.MessageController do
     app_id = conn.assigns.current_app_id
     before_id = Map.get(params, "before_id")
     search = Map.get(params, "search")
-    limit = min(Map.get(params, "limit", "50") |> String.to_integer(), 100)
+    limit =
+      case Integer.parse(to_string(Map.get(params, "limit", "50"))) do
+        {parsed, _} when parsed > 0 -> min(parsed, 100)
+        _ -> 50
+      end
 
     with {:ok, _conv} <- Chat.get_conversation_for_user(app_id, conv_id, user_id) do
       messages =
@@ -186,12 +190,11 @@ defmodule RevoluchatWeb.MessageController do
   defp format_attachment(nil, _conn), do: nil
 
   defp format_attachment(att, conn) do
-    # Generate full authenticated proxy URL
-    base_url = RevoluchatWeb.Endpoint.url()
-    _token = conn.assigns.token
-    _api_key = conn.assigns.api_key
+    # Generate relative authenticated proxy URL so clients can prepend their own base URL
+    token = conn.assigns.token
+    api_key = conn.assigns.api_key
 
-    url = "#{base_url}/api/a/v1/attachments/#{att.id}/show"
+    url = "/api/a/v1/attachments/#{att.id}/show?token=#{token}&api_key=#{api_key}"
 
     type =
       cond do

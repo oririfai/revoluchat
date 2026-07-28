@@ -21,12 +21,13 @@ defmodule RevoluchatWeb.Endpoint do
   socket("/socket", RevoluchatWeb.UserSocket,
     websocket: [
       check_origin: {RevoluchatWeb.Endpoint, :check_origin?, []},
+      connect_info: [:peer_data, :x_headers, :user_agent],
       timeout: 45_000,
       compress: true,
       # 1MB max frame size
       max_frame_size: 1_048_576
     ],
-    longpoll: [connect_info: [session: @session_options]]
+    longpoll: [connect_info: [session: @session_options, peer_data: true, x_headers: true, user_agent: true]]
   )
 
   socket("/live", Phoenix.LiveView.Socket,
@@ -116,12 +117,14 @@ defmodule RevoluchatWeb.Endpoint do
 
   def session_options do
     signing_salt = System.fetch_env!("SESSION_SIGNING_SALT")
+    secure_cookie = System.get_env("SECURE_COOKIES", "false") == "true"
+
     [
       store: :cookie,
       key: "_site_key",
       signing_salt: signing_salt,
       same_site: "Lax",
-      secure: true,
+      secure: secure_cookie,
       http_only: true
     ]
   end

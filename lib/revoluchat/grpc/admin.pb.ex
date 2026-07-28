@@ -132,6 +132,56 @@ defmodule Admin.V1.Wallpaper do
   field :created_at, 4, type: :string, json_name: "createdAt"
 end
 
+defmodule Admin.V1.SetAppPreferenceRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.SetAppPreferenceRequest",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :key, 1, type: :string
+  field :value, 2, type: :string
+end
+
+defmodule Admin.V1.GetAppPreferencesRequest do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetAppPreferencesRequest",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :keys, 1, repeated: true, type: :string
+end
+
+defmodule Admin.V1.GetAppPreferencesResponse.PreferencesEntry do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetAppPreferencesResponse.PreferencesEntry",
+    map: true,
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :key, 1, type: :string
+  field :value, 2, type: :string
+end
+
+defmodule Admin.V1.GetAppPreferencesResponse do
+  @moduledoc false
+
+  use Protobuf,
+    full_name: "admin.v1.GetAppPreferencesResponse",
+    protoc_gen_elixir_version: "0.17.0",
+    syntax: :proto3
+
+  field :preferences, 1,
+    repeated: true,
+    type: Admin.V1.GetAppPreferencesResponse.PreferencesEntry,
+    map: true
+end
+
 defmodule Admin.V1.AddWallpaperRequest do
   @moduledoc false
 
@@ -194,6 +244,10 @@ defmodule Admin.V1.AdminService.Service do
   rpc :DeleteWallpaper, Admin.V1.DeleteWallpaperRequest, Admin.V1.ActionResponse
 
   rpc :GetWallpapers, Admin.V1.GetWallpapersRequest, Admin.V1.GetWallpapersResponse
+
+  rpc :SetAppPreference, Admin.V1.SetAppPreferenceRequest, Admin.V1.ActionResponse
+
+  rpc :GetAppPreferences, Admin.V1.GetAppPreferencesRequest, Admin.V1.GetAppPreferencesResponse
 end
 
 defmodule Admin.V1.AdminService.Stub do

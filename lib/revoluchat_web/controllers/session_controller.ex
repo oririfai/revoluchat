@@ -14,16 +14,24 @@ defmodule RevoluchatWeb.SessionController do
 
     admin = Repo.get_by(Admin, email: email)
 
-    if admin && Admin.verify_password(password, admin) do
+    authenticated? =
+      if admin do
+        Admin.verify_password(password, admin)
+      else
+        Bcrypt.no_user_verify()
+        false
+      end
+
+    if authenticated? do
       # Log successful login to PostgreSQL
       Revoluchat.Accounts.log_admin_login(admin, ip_address, user_agent, :success)
 
       conn
+      |> configure_session(renew: true)
       |> put_session(:admin_id, admin.id)
       |> put_session(:login_ip, ip_address)
       |> put_session(:login_user_agent, user_agent)
       |> put_session(:is_remember_me, remember_me)
-      |> configure_session(renew: true)
       |> handle_remember_me(admin.id, remember_me)
       |> redirect(to: "/admin")
     else

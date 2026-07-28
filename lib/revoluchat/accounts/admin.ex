@@ -8,13 +8,14 @@ defmodule Revoluchat.Accounts.Admin do
     field(:password_hash, :string)
     field(:role, :string, default: "custom")
     field(:permissions, {:array, :string}, default: [])
+    field(:created_by, :string, default: "System")
 
     timestamps(type: :utc_datetime)
   end
 
   def changeset(admin, attrs) do
     admin
-    |> cast(attrs, [:email, :password, :role, :permissions])
+    |> cast(attrs, [:email, :password, :role, :permissions, :created_by])
     |> validate_required([:email])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
     |> validate_length(:password, min: 6)

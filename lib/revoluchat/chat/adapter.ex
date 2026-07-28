@@ -8,24 +8,24 @@ defmodule Revoluchat.Chat.Adapter do
   @callback list_user_conversations(String.t(), integer(), keyword()) :: [any()]
   @callback get_conversation!(String.t(), String.t()) :: any()
   @callback delete_conversation(String.t(), [String.t()] | String.t(), integer()) :: :ok | {:error, any()}
-  
+
   @callback insert_message(map()) :: {:ok, any(), [any()]} | {:error, any()}
   @callback list_messages(String.t(), String.t(), integer(), keyword()) :: [any()]
   @callback list_messages_by_ids(String.t(), [String.t()]) :: [any()]
   @callback get_message!(String.t()) :: any()
   @callback get_message_with_conversation!(String.t()) :: any()
-  
+
   @callback mark_read(String.t(), String.t(), integer()) :: {:ok, any()} | {:error, any()}
   @callback mark_delivered(String.t(), String.t(), integer()) :: {:ok, any()} | {:error, any()}
   @callback soft_delete_message(String.t(), String.t(), integer()) :: {:ok, any()} | {:error, any()}
   @callback soft_delete_messages(String.t(), [String.t()], integer()) :: {:ok, integer()} | {:error, any()}
-  
+
   @callback get_attachment!(String.t()) :: any()
   @callback create_attachment_init(map()) :: {:ok, any(), map()} | {:error, any()}
   @callback confirm_attachment(String.t(), String.t(), integer()) :: {:ok, any()} | {:error, any()}
   @callback get_attachment_download_url(String.t(), String.t(), integer()) :: {:ok, String.t()} | {:error, any()}
   @callback list_attachments_by_ids(String.t(), [String.t()]) :: [any()]
-  
+
   @callback count_messages_for_app(String.t()) :: integer()
   @callback count_active_conversations(String.t()) :: integer()
 

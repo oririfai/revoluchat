@@ -299,7 +299,7 @@ defmodule RevoluchatWeb.ConversationController do
     updated
   end
 
-  defp format_conversation(c, users_map, current_user_id, app_id, attachments_map \\ %{}, presence_map \\ %{}, db_users_map \\ %{}) do
+  defp format_conversation(c, users_map, current_user_id, app_id, attachments_map \\ %{}, presence_map \\ %{}, db_users_map \\ %{}, token \\ nil, api_key \\ nil) do
     inserted_at = Map.get(c, :inserted_at)
     last_activity_at = Map.get(c, :last_activity_at) || inserted_at
 
@@ -310,7 +310,7 @@ defmodule RevoluchatWeb.ConversationController do
     base = %{
       id: id,
       type: type,
-      last_message: format_last_message(c.last_message, attachments_map, app_id),
+      last_message: format_last_message(c.last_message, attachments_map, app_id, token, api_key),
       last_activity_at: last_activity_at,
       inserted_at: inserted_at,
       unread_count: Map.get(c, :unread_count) || 0,
@@ -319,7 +319,7 @@ defmodule RevoluchatWeb.ConversationController do
 
     if Map.get(c, :type) == "group" or not is_nil(Map.get(c, :group)) do
       group = c.group
-      formatted_group = if group, do: RevoluchatWeb.GroupController.format_group(group, app_id, current_user_id, attachments_map), else: nil
+      formatted_group = if group, do: RevoluchatWeb.GroupController.format_group(group, app_id, current_user_id, attachments_map, token, api_key), else: nil
 
       Map.merge(base, %{
         type: "group",
@@ -340,15 +340,17 @@ defmodule RevoluchatWeb.ConversationController do
   defp format_last_message(%Ecto.Association.NotLoaded{}), do: nil
   defp format_last_message(%Ecto.Association.NotLoaded{}, _), do: nil
   defp format_last_message(%Ecto.Association.NotLoaded{}, _, _), do: nil
+  defp format_last_message(%Ecto.Association.NotLoaded{}, _, _, _, _), do: nil
   defp format_last_message(nil), do: nil
   defp format_last_message(nil, _), do: nil
   defp format_last_message(nil, _, _), do: nil
+  defp format_last_message(nil, _, _, _, _), do: nil
 
   defp format_last_message(m, attachments_map) do
     format_last_message(m, attachments_map, nil)
   end
 
-  defp format_last_message(m, attachments_map, app_id) do
+  defp format_last_message(m, attachments_map, app_id, token \\ nil, api_key \\ nil) do
     # Get attachment IDs for this message
     attachment_ids =
       (m.attachment_ids || [])
@@ -384,7 +386,7 @@ defmodule RevoluchatWeb.ConversationController do
           []
       end
 
-    formatted_attachments = Enum.map(attachments_list, &format_attachment/1)
+    formatted_attachments = Enum.map(attachments_list, &format_attachment(&1, token, api_key))
     first_attachment = List.first(formatted_attachments)
 
     %{
@@ -401,10 +403,13 @@ defmodule RevoluchatWeb.ConversationController do
     }
   end
 
-  defp format_attachment(nil), do: nil
-  defp format_attachment(att) do
-    base_url = RevoluchatWeb.Endpoint.url()
-    url = "#{base_url}/api/a/v1/attachments/#{att.id}/show"
+  defp format_attachment(nil, _, _), do: nil
+  defp format_attachment(att, token, api_key) do
+    url = if token && api_key do
+      "/api/a/v1/attachments/#{att.id}/show?token=#{token}&api_key=#{api_key}"
+    else
+      "/api/a/v1/attachments/#{att.id}/show"
+    end
 
     type =
       cond do

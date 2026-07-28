@@ -12,7 +12,8 @@ defmodule Revoluchat.Accounts do
     UserChat,
     Contact,
     Admin,
-    AdminLoginActivity
+    AdminLoginActivity,
+    UserLoginActivity
   }
 
   alias Revoluchat.Grpc.UserClient
@@ -977,11 +978,11 @@ defmodule Revoluchat.Accounts do
     os =
       cond do
         String.contains?(ua_str, "Windows") -> "Windows"
-        String.contains?(ua_str, "Macintosh") -> "macOS"
-        String.contains?(ua_str, "Android") -> "Android"
-        String.contains?(ua_str, "iPhone") or String.contains?(ua_str, "iPad") -> "iOS"
+        String.contains?(ua_str, "Macintosh") or String.contains?(ua_str, "Mac OS") -> "macOS"
+        String.contains?(ua_str, "Android") or String.contains?(ua_str, "okhttp") or String.contains?(ua_str, "Android App") -> "Android"
+        String.contains?(ua_str, "iPhone") or String.contains?(ua_str, "iPad") or String.contains?(ua_str, "iOS") -> "iOS"
         String.contains?(ua_str, "Linux") -> "Linux"
-        true -> "Unknown OS"
+        true -> "Mobile Client"
       end
 
     browser =
@@ -990,7 +991,9 @@ defmodule Revoluchat.Accounts do
         String.contains?(ua_str, "Chrome") -> "Chrome"
         String.contains?(ua_str, "Safari") -> "Safari"
         String.contains?(ua_str, "Firefox") -> "Firefox"
-        true -> "Unknown Browser"
+        String.contains?(ua_str, "okhttp") -> "OkHttp Client"
+        String.contains?(ua_str, "Mobile SDK") or String.contains?(ua_str, "Android App") -> "Mobile App"
+        true -> "Native App"
       end
 
     {os, browser}
@@ -1022,5 +1025,247 @@ defmodule Revoluchat.Accounts do
 
   def change_admin(%Admin{} = admin, attrs \\ %{}) do
     Admin.changeset(admin, attrs)
+  end
+
+  # ─── Login & Footprint Activities ─────────────────────────────────────────
+
+  def list_admin_login_activities(opts \\ [])
+
+  def list_admin_login_activities(limit) when is_integer(limit) do
+    list_admin_login_activities(per_page: limit)
+  end
+
+  def list_admin_login_activities(opts) when is_list(opts) do
+    search = Keyword.get(opts, :search)
+    start_date = Keyword.get(opts, :start_date)
+    end_date = Keyword.get(opts, :end_date)
+    page = Keyword.get(opts, :page, 1) |> to_int(1)
+    per_page = Keyword.get(opts, :per_page, 20) |> to_int(20)
+
+    base_query =
+      from(a in AdminLoginActivity,
+        left_join: adm in assoc(a, :admin)
+      )
+
+    base_query =
+      if search && search != "" do
+        search_term = "%#{search}%"
+        from([a, adm] in base_query,
+          where:
+            ilike(a.email, ^search_term) or
+            ilike(a.ip_address, ^search_term) or
+            ilike(a.user_agent, ^search_term) or
+            ilike(a.device_os, ^search_term) or
+            ilike(a.device_browser, ^search_term) or
+            ilike(adm.email, ^search_term)
+        )
+      else
+        base_query
+      end
+
+    base_query = apply_date_filters(base_query, start_date, end_date)
+
+    total_count = Repo.aggregate(base_query, :count, :id)
+    total_pages = max(1, ceil(total_count / per_page))
+    current_page = min(max(1, page), total_pages)
+    offset = (current_page - 1) * per_page
+
+    entries =
+      from(a in base_query,
+        preload: [:admin],
+        order_by: [desc: a.inserted_at],
+        limit: ^per_page,
+        offset: ^offset
+      )
+      |> Repo.all()
+
+    %{
+      entries: entries,
+      total_count: total_count,
+      total_pages: total_pages,
+      page: current_page,
+      per_page: per_page
+    }
+  end
+
+  def list_user_login_activities(opts \\ [])
+
+  def list_user_login_activities(limit) when is_integer(limit) do
+    list_user_login_activities(per_page: limit)
+  end
+
+  def list_user_login_activities(opts) when is_list(opts) do
+    search = Keyword.get(opts, :search)
+    start_date = Keyword.get(opts, :start_date)
+    end_date = Keyword.get(opts, :end_date)
+    page = Keyword.get(opts, :page, 1) |> to_int(1)
+    per_page = Keyword.get(opts, :per_page, 20) |> to_int(20)
+
+    base_query = from(u in UserLoginActivity)
+
+    base_query =
+      if search && search != "" do
+        search_term = "%#{search}%"
+        from(u in base_query,
+          where:
+            ilike(u.name, ^search_term) or
+            ilike(u.phone, ^search_term) or
+            ilike(u.user_id, ^search_term) or
+            ilike(u.ip_address, ^search_term) or
+            ilike(u.user_agent, ^search_term) or
+            ilike(u.device_os, ^search_term) or
+            ilike(u.device_browser, ^search_term)
+        )
+      else
+        base_query
+      end
+
+    base_query = apply_date_filters(base_query, start_date, end_date)
+
+    total_count = Repo.aggregate(base_query, :count, :id)
+    total_pages = max(1, ceil(total_count / per_page))
+    current_page = min(max(1, page), total_pages)
+    offset = (current_page - 1) * per_page
+
+    entries =
+      from(u in base_query,
+        order_by: [desc: u.inserted_at],
+        limit: ^per_page,
+        offset: ^offset
+      )
+      |> Repo.all()
+
+    %{
+      entries: entries,
+      total_count: total_count,
+      total_pages: total_pages,
+      page: current_page,
+      per_page: per_page
+    }
+  end
+
+  defp to_int(val, default) when is_integer(val), do: val
+  defp to_int(val, default) when is_binary(val) do
+    case Integer.parse(val) do
+      {int, ""} -> int
+      _ -> default
+    end
+  end
+  defp to_int(_val, default), do: default
+
+  defp apply_date_filters(query, start_date, end_date) do
+    query =
+      case parse_wib_date(start_date, ~T[00:00:00]) do
+        {:ok, dt_utc} ->
+          from(q in query, where: q.inserted_at >= ^dt_utc)
+
+        _ ->
+          query
+      end
+
+    case parse_wib_date(end_date, ~T[23:59:59]) do
+      {:ok, dt_utc} ->
+        from(q in query, where: q.inserted_at <= ^dt_utc)
+
+      _ ->
+        query
+    end
+  end
+
+  defp parse_wib_date(nil, _time), do: :error
+  defp parse_wib_date("", _time), do: :error
+  defp parse_wib_date(date_str, time) when is_binary(date_str) do
+    case Date.from_iso8601(date_str) do
+      {:ok, date} ->
+        naive = NaiveDateTime.new!(date, time)
+        dt_wib = DateTime.from_naive!(naive, "Etc/UTC")
+        {:ok, DateTime.add(dt_wib, -7 * 3600, :second)}
+
+      _ ->
+        :error
+    end
+  end
+  defp parse_wib_date(_, _time), do: :error
+
+  def log_user_activity(user_id, name, phone, ip_address, user_agent, status \\ "success") do
+    {os, browser} = parse_user_agent(user_agent)
+
+    attrs = %{
+      user_id: to_string(user_id),
+      name: name,
+      phone: phone,
+      ip_address: to_string(ip_address),
+      user_agent: to_string(user_agent),
+      device_os: os,
+      device_browser: browser,
+      status: to_string(status)
+    }
+
+    %UserLoginActivity{}
+    |> UserLoginActivity.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def get_oban_job_stats do
+    try do
+      query =
+        from(j in "oban_jobs",
+          group_by: j.state,
+          select: {j.state, count(j.id)}
+        )
+
+      counts =
+        Repo.all(query)
+        |> Map.new()
+
+      executing = Map.get(counts, "executing", 0)
+      completed = Map.get(counts, "completed", 0)
+      available = Map.get(counts, "available", 0)
+      retryable = Map.get(counts, "retryable", 0)
+      discarded = Map.get(counts, "discarded", 0)
+
+      %{
+        executing: executing,
+        completed: completed,
+        available: available,
+        retryable: retryable,
+        discarded: discarded,
+        total: executing + completed + available + retryable + discarded
+      }
+    rescue
+      _ ->
+        %{executing: 0, completed: 0, available: 0, retryable: 0, discarded: 0, total: 0}
+    end
+  end
+
+  def get_client_platform_share do
+    try do
+      total = Repo.aggregate(UserLoginActivity, :count, :id)
+
+      if total > 0 do
+        counts =
+          from(u in UserLoginActivity,
+            group_by: u.device_os,
+            select: {u.device_os, count(u.id)}
+          )
+          |> Repo.all()
+          |> Map.new()
+
+        android = Map.get(counts, "Android", 0)
+        ios = Map.get(counts, "iOS", 0) + Map.get(counts, "iPhone", 0) + Map.get(counts, "iPad", 0)
+        web = Map.get(counts, "Web", 0) + Map.get(counts, "Windows", 0) + Map.get(counts, "Mac", 0) + Map.get(counts, "Linux", 0)
+
+        android_pct = Float.round(android * 100 / total, 1)
+        ios_pct = Float.round(ios * 100 / total, 1)
+        web_pct = Float.round(web * 100 / total, 1)
+
+        %{android: android_pct, ios: ios_pct, web: web_pct, android_count: android, ios_count: ios, web_count: web, total: total}
+      else
+        %{android: 0.0, ios: 0.0, web: 0.0, android_count: 0, ios_count: 0, web_count: 0, total: 0}
+      end
+    rescue
+      _ ->
+        %{android: 0.0, ios: 0.0, web: 0.0, android_count: 0, ios_count: 0, web_count: 0, total: 0}
+    end
   end
 end
