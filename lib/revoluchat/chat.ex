@@ -269,11 +269,11 @@ defmodule Revoluchat.Chat do
 
   def create_group(app_id, params), do: adapter().create_group(app_id, params)
   def get_group(app_id, group_id), do: adapter().get_group(app_id, group_id)
-  def add_members(app_id, group_id, user_ids, role \\ "member"), do: adapter().add_members(app_id, group_id, user_ids, role)
-  def remove_member(app_id, group_id, user_id), do: adapter().remove_member(app_id, group_id, user_id)
-  def update_group(app_id, group_id, params), do: adapter().update_group(app_id, group_id, params)
+  def add_members(app_id, group_id, user_ids, role \\ "member", user_id \\ nil), do: adapter().add_members(app_id, group_id, user_ids, role, user_id)
+  def remove_member(app_id, group_id, target_user_id, user_id \\ nil), do: adapter().remove_member(app_id, group_id, target_user_id, user_id)
+  def update_group(app_id, group_id, params, user_id \\ nil), do: adapter().update_group(app_id, group_id, params, user_id)
   def leave_group(app_id, group_id, user_id), do: adapter().leave_group(app_id, group_id, user_id)
-  def delete_group(app_id, group_id), do: adapter().delete_group(app_id, group_id)
+  def delete_group(app_id, group_id, user_id \\ nil), do: adapter().delete_group(app_id, group_id, user_id)
   def mute_group(app_id, group_id, user_id, mute), do: adapter().mute_group(app_id, group_id, user_id, mute)
   def accept_group_invitation(app_id, group_id, user_id), do: adapter().accept_group_invitation(app_id, group_id, user_id)
 end

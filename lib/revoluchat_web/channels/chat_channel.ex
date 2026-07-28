@@ -1548,12 +1548,41 @@ defmodule RevoluchatWeb.ChatChannel do
             {:ok, %{is_locked: true}} ->
               {:reply, {:error, %{reason: "group_locked"}}, socket}
 
+            {:ok, group} ->
+              if can_send_messages?(group, user_id) do
+                process_new_message(payload, nil, group_id, user_id, socket)
+              else
+                {:reply, {:error, %{reason: "unauthorized"}}, socket}
+              end
+
             _ ->
-              process_new_message(payload, nil, group_id, user_id, socket)
+              {:reply, {:error, %{reason: "not_found"}}, socket}
           end
         else
           process_new_message(payload, conversation_id, nil, user_id, socket)
         end
+    end
+  end
+
+  defp can_send_messages?(group, user_id) do
+    # Admins can always send messages
+    role =
+      Enum.find_value(group.members || [], "member", fn m ->
+        if to_string(m.user_id) == to_string(user_id), do: String.downcase(m.role || "member"), else: nil
+      end)
+
+    if role == "admin" or role == "creator" do
+      true
+    else
+      # Check permissions json string
+      perms_json = group.permissions || "{}"
+      case Jason.decode(perms_json) do
+        {:ok, perms} ->
+          Map.get(perms, "send_messages", true)
+
+        _ ->
+          true
+      end
     end
   end
 

@@ -475,10 +475,10 @@ defmodule Revoluchat.Chat.Adapters.Postgres do
 
   def create_group(_app_id, _params), do: {:error, :not_supported_in_normal_tier}
   def get_group(_app_id, _group_id), do: {:error, :not_supported_in_normal_tier}
-  def add_members(_app_id, _group_id, _user_ids, _role), do: {:error, :not_supported_in_normal_tier}
-  def remove_member(_app_id, _group_id, _user_id), do: {:error, :not_supported_in_normal_tier}
-  def update_group(_app_id, _group_id, _params), do: {:error, :not_supported_in_normal_tier}
-  def leave_group(_app_id, _group_id), do: {:error, :not_supported_in_normal_tier}
-  def delete_group(_app_id, _group_id), do: {:error, :not_supported_in_normal_tier}
+  def add_members(_app_id, _group_id, _user_ids, _role, _user_id \\ nil), do: {:error, :not_supported_in_normal_tier}
+  def remove_member(_app_id, _group_id, _target_user_id, _user_id \\ nil), do: {:error, :not_supported_in_normal_tier}
+  def update_group(_app_id, _group_id, _params, _user_id \\ nil), do: {:error, :not_supported_in_normal_tier}
+  def leave_group(_app_id, _group_id, _user_id), do: {:error, :not_supported_in_normal_tier}
+  def delete_group(_app_id, _group_id, _user_id \\ nil), do: {:error, :not_supported_in_normal_tier}
   def mute_group(_app_id, _group_id, _mute), do: {:error, :not_supported_in_normal_tier}
 end

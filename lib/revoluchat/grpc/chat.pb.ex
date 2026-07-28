@@ -151,6 +151,8 @@ defmodule Revoluchat.V1.Group do
   field :unread_count, 11, type: :uint32, json_name: "unreadCount"
   field :my_status, 12, type: :string, json_name: "myStatus"
   field :last_message, 13, type: Revoluchat.V1.Message, json_name: "lastMessage"
+  field :message_ttl, 14, type: :int32, json_name: "messageTtl"
+  field :permissions, 15, type: :string
 end
 
 defmodule Revoluchat.V1.GroupMember do
@@ -260,6 +262,8 @@ defmodule Revoluchat.V1.UpdateGroupRequest do
   field :description, 4, type: :string
   field :avatar_url, 5, type: :string, json_name: "avatarUrl"
   field :is_locked, 6, type: :bool, json_name: "isLocked"
+  field :message_ttl, 7, proto3_optional: true, type: :int32, json_name: "messageTtl"
+  field :permissions, 8, proto3_optional: true, type: :string
 end
 
 defmodule Revoluchat.V1.UpdateGroupResponse do

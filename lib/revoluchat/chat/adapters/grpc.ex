@@ -174,24 +174,24 @@ defmodule Revoluchat.Chat.Adapters.Grpc do
     ChatClient.get_group(app_id, group_id)
   end
 
-  def add_members(app_id, group_id, user_ids, role) do
-    ChatClient.add_members(app_id, group_id, user_ids, role)
+  def add_members(app_id, group_id, user_ids, role, user_id \\ nil) do
+    ChatClient.add_members(app_id, group_id, user_ids, role, user_id)
   end
 
-  def remove_member(app_id, group_id, user_id) do
-    ChatClient.remove_member(app_id, group_id, user_id)
+  def remove_member(app_id, group_id, target_user_id, user_id \\ nil) do
+    ChatClient.remove_member(app_id, group_id, target_user_id, user_id)
   end
 
-  def update_group(app_id, group_id, params) do
-    ChatClient.update_group(app_id, group_id, params)
+  def update_group(app_id, group_id, params, user_id \\ nil) do
+    ChatClient.update_group(app_id, group_id, params, user_id)
   end
 
   def leave_group(app_id, group_id, user_id) do
     ChatClient.leave_group(app_id, group_id, user_id)
   end
 
-  def delete_group(app_id, group_id) do
-    ChatClient.delete_group(app_id, group_id)
+  def delete_group(app_id, group_id, user_id \\ nil) do
+    ChatClient.delete_group(app_id, group_id, user_id)
   end
 
   def mute_group(app_id, group_id, user_id, mute) do

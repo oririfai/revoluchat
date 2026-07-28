@@ -113,6 +113,8 @@ message Group {
   uint32 unread_count = 11;
   string my_status = 12;
   Message last_message = 13;
+  int32 message_ttl = 14;
+  string permissions = 15;
 }
 
 message GroupMember {
@@ -166,6 +168,8 @@ message UpdateGroupRequest {
   string description = 4;
   string avatar_url = 5;
   bool is_locked = 6;
+  optional int32 message_ttl = 7;
+  optional string permissions = 8;
 }
 
 message UpdateGroupResponse {

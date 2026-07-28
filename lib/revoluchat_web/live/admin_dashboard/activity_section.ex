@@ -99,7 +99,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.ActivitySection do
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <h4 class="text-base font-bold text-gray-900">LiveKit WebRTC Call Engine</h4>
+              <h4 class="text-base font-bold text-gray-900">WebRTC Engine</h4>
               <span class={[
                 "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold",
                 if(Map.get(@livekit_status || %{}, :status) == :online, do: "bg-emerald-100 text-emerald-800", else: "bg-red-100 text-red-800")
@@ -143,7 +143,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.ActivitySection do
                   <span class="text-xs font-bold uppercase tracking-wider text-emerald-700">Live Streaming</span>
                   <span class="text-xs text-gray-400">| 2s refresh</span>
                 </div>
-                
+
                 <div class="flex flex-wrap items-center gap-4">
                   <!-- Real-Time Metrics Pill Badge -->
                   <div class="bg-gray-900 text-white px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-3.5 shadow-md">
@@ -424,7 +424,7 @@ defmodule RevoluchatWeb.AdminDashboardLive.ActivitySection do
                   <%= if @server_key_connected, do: "ONLINE / CONNECTED", else: "STANDBY" %>
                 </span>
               </div>
-              
+
               <div class="bg-gray-50 rounded-2xl p-4 border border-gray-200/70 text-xs space-y-3.5 shadow-2xs">
                 <div class="flex justify-between items-center py-0.5">
                   <span class="text-gray-600 font-medium">JWKS Server Key Signers:</span>

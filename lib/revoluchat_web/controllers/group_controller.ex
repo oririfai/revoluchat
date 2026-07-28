@@ -61,7 +61,8 @@ defmodule RevoluchatWeb.GroupController do
 
     with {:ok, group} <- Chat.get_group(app_id, id) do
       if is_member?(group, user_id) do
-        with {:ok, updated_group} <- Chat.update_group(app_id, id, params) do
+        params = Map.put_new(params, "is_locked", Map.get(group, :is_locked, false))
+        with {:ok, updated_group} <- Chat.update_group(app_id, id, params, user_id) do
           updated_group = preload_group_last_message(updated_group, app_id)
           json(conn, %{data: format_group(updated_group, app_id, user_id, %{}, conn.assigns.token, conn.assigns.api_key)})
         end
@@ -78,7 +79,7 @@ defmodule RevoluchatWeb.GroupController do
 
     with {:ok, group} <- Chat.get_group(app_id, id) do
       if is_member?(group, user_id) do
-        with :ok <- Chat.add_members(app_id, id, user_ids) do
+        with :ok <- Chat.add_members(app_id, id, user_ids, "member", user_id) do
           json(conn, %{success: true})
         end
       else
@@ -95,7 +96,7 @@ defmodule RevoluchatWeb.GroupController do
     with {:ok, group} <- Chat.get_group(app_id, id) do
       # Allow if user is group creator OR user is removing themselves OR user is an admin member
       if to_string(group.creator_id) == to_string(user_id) or to_string(target_user_id) == to_string(user_id) or is_admin_member?(group, user_id) do
-        with :ok <- Chat.remove_member(app_id, id, target_user_id) do
+        with :ok <- Chat.remove_member(app_id, id, target_user_id, user_id) do
           json(conn, %{success: true})
         end
       else
@@ -181,7 +182,7 @@ defmodule RevoluchatWeb.GroupController do
         current_photo_disabled = current_photo == 3
 
         hide_photo = not is_self and (target_photo_disabled or current_photo_disabled)
-        member_avatar = if hide_photo, do: nil, else: (user && user.avatar_url)
+        member_avatar = if hide_photo, do: nil, else: (user && resolve_avatar_url(user.avatar_url, token, api_key))
 
         %{
           user_id: m.user_id,

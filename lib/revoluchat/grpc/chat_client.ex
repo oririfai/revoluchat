@@ -344,7 +344,7 @@ defmodule Revoluchat.Grpc.ChatClient do
     end
   end
 
-  def add_members(app_id, group_id, user_ids, role) do
+  def add_members(app_id, group_id, user_ids, role, user_id \\ nil) do
     request = %AddMembersRequest{
       app_id: app_id,
       group_id: clean_id(group_id),
@@ -354,26 +354,26 @@ defmodule Revoluchat.Grpc.ChatClient do
 
     with {:ok, channel} <- connect(),
          {:ok, response} <-
-           GroupStub.add_members(channel, request, metadata: metadata(nil, app_id)) do
+           GroupStub.add_members(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
 
-  def remove_member(app_id, group_id, user_id) do
+  def remove_member(app_id, group_id, target_user_id, user_id \\ nil) do
     request = %RemoveMemberRequest{
       app_id: app_id,
       group_id: clean_id(group_id),
-      user_id: ensure_string(user_id)
+      user_id: ensure_string(target_user_id)
     }
 
     with {:ok, channel} <- connect(),
          {:ok, response} <-
-           GroupStub.remove_member(channel, request, metadata: metadata(nil, app_id)) do
+           GroupStub.remove_member(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
 
-  def update_group(app_id, group_id, params) do
+  def update_group(app_id, group_id, params, user_id \\ nil) do
     request = %UpdateGroupRequest{
       app_id: app_id,
       group_id: clean_id(group_id),
@@ -382,12 +382,14 @@ defmodule Revoluchat.Grpc.ChatClient do
       avatar_url: params["avatar_url"] || params[:avatar_url],
       is_locked:
         if(is_nil(params["is_locked"]), do: params[:is_locked], else: params["is_locked"]) ||
-          false
+          false,
+      message_ttl: params["message_ttl"] || params[:message_ttl],
+      permissions: params["permissions"] || params[:permissions]
     }
 
     with {:ok, channel} <- connect(),
          {:ok, response} <-
-           GroupStub.update_group(channel, request, metadata: metadata(nil, app_id)) do
+           GroupStub.update_group(channel, request, metadata: metadata(user_id, app_id)) do
       {:ok, response.group}
     end
   end
@@ -405,7 +407,7 @@ defmodule Revoluchat.Grpc.ChatClient do
     end
   end
 
-  def delete_group(app_id, group_id) do
+  def delete_group(app_id, group_id, user_id \\ nil) do
     request = %DeleteGroupRequest{
       app_id: app_id,
       group_id: clean_id(group_id)
@@ -413,7 +415,7 @@ defmodule Revoluchat.Grpc.ChatClient do
 
     with {:ok, channel} <- connect(),
          {:ok, response} <-
-           GroupStub.delete_group(channel, request, metadata: metadata(nil, app_id)) do
+           GroupStub.delete_group(channel, request, metadata: metadata(user_id, app_id)) do
       if response.success, do: :ok, else: {:error, response.message}
     end
   end
